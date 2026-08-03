@@ -1,14 +1,50 @@
-local _registry = (type(getreg) == "function" and pcall(getreg) and getreg())
-	or (type(debug) == "table" and type(debug.getregistry) == "function" and debug.getregistry())
-	or getgenv()
+local registry = (type(getreg) == "function" and pcall(getreg) and getreg()) or (type(debug) == "table" and type(debug.getregistry) == "function" and debug.getregistry()) or getgenv()
 
-_registry.__NN_private = _registry.__NN_private or {}
-local _nnPrivate = _registry.__NN_private
+registry.__NN_private = registry.__NN_private or {}
+local nnPrivate = registry.__NN_private
 
-if _nnPrivate.Loaded then return end
-_nnPrivate.Loaded = true
+if nnPrivate.Loaded then return end
+nnPrivate.Loaded = true
 
 if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- only for rarely used variables
+local rare = {
+	nnErr = nil,
+	uiErr = nil,
+	fpdh = workspace.FallenPartsDestroyHeight,
+	aimlockGui = nil,
+	fcPart = nil,
+	saActive = false,
+	saHookOriginal = nil,
+	saGui = nil,
+	saCircle = nil,
+	hitboxOriginals = {},
+	spinBav = nil,
+	loadStart = nil,
+	generalPage = nil,
+	espPage = nil,
+	cmdListFrame = nil,
+	cmdListScroll = nil,
+	cmdListSearch = nil,
+	kbMainFrame = nil,
+	kbManager = nil,
+	btnMainFrame = nil,
+	btnManager = nil,
+	closeCmd = nil,
+	nnSuppressNotify = false,
+	god_mode = nil,
+	god_hum = nil,
+	god_origNI = nil,
+	god_origNC = nil,
+	antiFling = false,
+	antiInvis = false,
+	uiScaleValue = 1,
+	antikick_orig = nil,
+	espActive = false,
+	cmdPrefix = ";",
+	clickingSugg = false,
+}
 
 local cloneref = type(cloneref) == "function" and cloneref or function(x) return x end
 
@@ -27,11 +63,10 @@ local function NewInstance(className, parent)
 	return inst
 end
 
-local _loadStart = os.clock()
+rare.loadStart = os.clock()
 
 local function safeLoad(url)
-	local loader = (type(loadstring) == "function" and loadstring)
-		or (type(load) == "function" and load)
+	local loader = (type(loadstring) == "function" and loadstring) or (type(load) == "function" and load)
 
 	if not loader then
 		return nil, "This executor does not provide loadstring/load."
@@ -49,10 +84,7 @@ local function safeLoad(url)
 			if ok then return res end
 		end
 
-		local reqFn = (type(request) == "function" and request)
-			or (type(http_request) == "function" and http_request)
-			or (type(syn) == "table" and type(syn.request) == "function" and syn.request)
-			or (type(http) == "table" and type(http.request) == "function" and http.request)
+		local reqFn = (type(request) == "function" and request) or (type(http_request) == "function" and http_request) or (type(syn) == "table" and type(syn.request) == "function" and syn.request) or (type(http) == "table" and type(http.request) == "function" and http.request)
 
 		if reqFn then
 			local ok, res = pcall(function()
@@ -82,15 +114,17 @@ local function safeLoad(url)
 	return result
 end
 
-local NNNotify, nnErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Noname/refs/heads/main/NonameNotifications.lua")
+local NNNotify
+NNNotify, rare.nnErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Noname/refs/heads/main/NonameNotifications.lua")
 if not NNNotify then
-	warn("[Noname] Failed to load NonameNotifications module: " .. tostring(nnErr))
+	warn("[Noname] Failed to load NonameNotifications module: " .. tostring(rare.nnErr))
 	return
 end
 
-local UI, uiErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Noname/refs/heads/main/Noname-Ui.lua")
+local UI
+UI, rare.uiErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Noname/refs/heads/main/Noname-Ui.lua")
 if not UI then
-	warn("[Noname] Failed to load UI module: " .. tostring(uiErr))
+	warn("[Noname] Failed to load UI module: " .. tostring(rare.uiErr))
 	return
 end
 
@@ -102,19 +136,15 @@ local Players = cloneref(game:GetService("Players"))
 local HttpService = cloneref(game:GetService("HttpService"))
 local TeleportService = cloneref(game:GetService("TeleportService"))
 local GuiService = cloneref(game:GetService("GuiService"))
+local Lighting = cloneref(game:GetService("Lighting"))
 local Vim = nil
 pcall(function() Vim = cloneref(game:GetService("VirtualInputManager")) end)
 local LocalPlayer = Players.LocalPlayer
 local Camera = cloneref(workspace.CurrentCamera)
 local cachedPlayers = {}
 local noclipParts = {}
-local nfvIsOn = {
-	antiFling = false,
-	antiInvis = false,
-}
-local aimlockGui = nil
-local hitboxOriginals = {}
 local loopBringTargets = {}
+local fpsbooster = nil
 local func = {
 	feat = {},
 	esp = {},
@@ -126,28 +156,18 @@ local flying = false
 local bodyVelocity = nil
 local bodyGyro = nil
 local NNConn = {}
+local Cmds = {}
 local Controls = require(cloneref(LocalPlayer:WaitForChild("PlayerScripts")):WaitForChild("PlayerModule")):GetControls()
 local flyspeed = nil
-local fpdh = workspace.FallenPartsDestroyHeight
-local clipboard = type(setclipboard) == "function" and setclipboard or type(toclipboard) == "function" and toclipboard or type(set_clipboard) == "function" and set_clipboard
-local writefile = type(writefile) == "function" and writefile or nil
-local readfile = type(readfile) == "function" and readfile or nil
-local isfile = type(isfile) == "function" and isfile or nil
-local isfolder = type(isfolder) == "function" and isfolder or nil
-local makefolder = type(makefolder) == "function" and makefolder or nil
-local espOpts = { color = Color3.fromRGB(255, 80, 80), distance = false, health = false, chamsonly = false, colorByTeam = false, useCustomColor = false }
-local espActive = false
-local godmode = {
-	mode = nil,
-	origNI = nil,
-	origNC = nil,
-	humanoid = nil,
-}
-local cmdPrefix = ";"
-local afkMode = nil
-local uiScaleValue = 1
-
-local hookapi = {
+local execapi = {
+	writefile = type(writefile) == "function" and writefile or nil,
+	readfile = type(readfile) == "function" and readfile or nil,
+	isfile = type(isfile) == "function" and isfile or nil,
+	isfolder = type(isfolder) == "function" and isfolder or nil,
+	makefolder = type(makefolder) == "function" and makefolder or nil,
+	sethiddenproperty = (type(sethiddenproperty) == "function" and sethiddenproperty) or (type(set_hidden_property) == "function" and set_hidden_property) or (type(set_hidden_prop) == "function" and set_hidden_prop) or nil,
+	clipboard = type(setclipboard) == "function" and setclipboard or type(toclipboard) == "function" and toclipboard or type(set_clipboard) == "function" and set_clipboard,
+	setfpscap = type(setfpscap) == "function" and setfpscap or nil,
 	hookmetamethod = type(hookmetamethod) == "function" and hookmetamethod or nil,
 	hookfunction = (type(hookfunction) == "function" and hookfunction) or (type(replaceclosure) == "function" and replaceclosure) or (type(replacefunction) == "function" and replacefunction) or (type(hookfunc) == "function" and hookfunc) or (type(replacefunc) == "function" and replacefunc) or (type(detourfunction) == "function" and detourfunction) or (type(detour_function) == "function" and detour_function) or nil,
 	getrawmetatable = type(getrawmetatable) == "function" and getrawmetatable or nil,
@@ -155,10 +175,20 @@ local hookapi = {
 	newcclosure = type(newcclosure) == "function" and newcclosure or nil,
 	setstackhidden = type(setstackhidden) == "function" and setstackhidden or nil,
 	checkcaller = type(checkcaller) == "function" and checkcaller or nil,
+	getgc = (type(getgc) == "function" and getgc) or (type(debug) == "table" and type(debug.getgc) == "function" and debug.getgc) or nil,
+	getrenv = type(getrenv) == "function" and getrenv or nil,
 }
+local espOpts = { color = Color3.fromRGB(255, 80, 80), distance = false, health = false, chamsonly = false, colorByTeam = false, useCustomColor = false }
+local afkMode = nil
+local playerChar = LocalPlayer.Character
+local playerHum = playerChar and playerChar:FindFirstChildOfClass("Humanoid")
+local playerHRP = playerChar and playerChar:FindFirstChild("HumanoidRootPart")
 
 -- notify
+rare.nnSuppressNotify = false
+
 local function notify(icon, duration, title, text, button, button2)
+	if rare.nnSuppressNotify then return end
 	local cfg = {
 		Title = title or "Noname",
 		Text = text or "",
@@ -194,74 +224,54 @@ local Connection = {}
 Connection.__index = Connection
 
 function Connection.new(signal, fn)
-	return setmetatable({
-		_connected = true,
-		_signal = signal,
-		_fn = fn,
-		_next = false,
-	}, Connection)
+	return setmetatable({ connected = true, signal = signal, fn = fn, next = false }, Connection)
 end
 
 function Connection:Disconnect()
-	self._connected = false
+	self.connected = false
 
-	if self._signal._handlerListHead == self then
-		self._signal._handlerListHead = self._next
+	if self.signal.handlerListHead == self then
+		self.signal.handlerListHead = self.next
 	else
-		local prev = self._signal._handlerListHead
-		while prev and prev._next ~= self do
-			prev = prev._next
+		local prev = self.signal.handlerListHead
+		while prev and prev.next ~= self do
+			prev = prev.next
 		end
 		if prev then
-			prev._next = self._next
+			prev.next = self.next
 		end
 	end
 end
-
-setmetatable(Connection, {
-	__index = function(_, key)
-		error(("Attempt to get Connection::%s (not a valid member)"):format(tostring(key)), 2)
-	end,
-	__newindex = function(_, key)
-		error(("Attempt to set Connection::%s (not a valid member)"):format(tostring(key)), 2)
-	end,
-})
 
 local Signal = {}
 Signal.__index = Signal
 
 function Signal.new()
-	return setmetatable({
-		_handlerListHead = false,
-	}, Signal)
+	return setmetatable({ handlerListHead = false }, Signal)
 end
 
 function Signal:Connect(fn)
 	local connection = Connection.new(self, fn)
-	if self._handlerListHead then
-		connection._next = self._handlerListHead
-		self._handlerListHead = connection
-	else
-		self._handlerListHead = connection
-	end
+	connection.next = self.handlerListHead
+	self.handlerListHead = connection
 	return connection
 end
 
 function Signal:DisconnectAll()
-	self._handlerListHead = false
+	self.handlerListHead = false
 end
 
 function Signal:Fire(...)
-	local item = self._handlerListHead
+	local item = self.handlerListHead
 	while item do
-		if item._connected then
+		if item.connected then
 			if not freeRunnerThread then
 				freeRunnerThread = coroutine.create(runEventHandlerInFreeThread)
 				coroutine.resume(freeRunnerThread)
 			end
-			task.spawn(freeRunnerThread, item._fn, ...)
+			task.spawn(freeRunnerThread, item.fn, ...)
 		end
-		item = item._next
+		item = item.next
 	end
 end
 
@@ -278,7 +288,7 @@ end
 function Signal:Once(fn)
 	local cn
 	cn = self:Connect(function(...)
-		if cn._connected then
+		if cn.connected then
 			cn:Disconnect()
 		end
 		fn(...)
@@ -286,18 +296,11 @@ function Signal:Once(fn)
 	return cn
 end
 
-setmetatable(Signal, {
-	__index = function(_, key)
-		error(("Attempt to get Signal::%s (not a valid member)"):format(tostring(key)), 2)
-	end,
-	__newindex = function(_, key)
-		error(("Attempt to set Signal::%s (not a valid member)"):format(tostring(key)), 2)
-	end,
-})
-
 -- cache
 local PlayerAdded = Signal.new()
 local PlayerRemoving = Signal.new()
+local CharacterAdded = Signal.new()
+local CharacterCached = Signal.new()
 
 Players.PlayerAdded:Connect(function(player)
 	cachedPlayers[player] = true
@@ -313,24 +316,30 @@ for _, player in ipairs(Players:GetPlayers()) do
 	cachedPlayers[player] = true
 end
 
-local CharacterAdded = Signal.new()
 LocalPlayer.CharacterAdded:Connect(function(char)
 	CharacterAdded:Fire(char)
 end)
 
--- NnBind
-local _nnPrCnt = 0
+CharacterAdded:Connect(function(char)
+	playerChar = char
+	playerHum = char:WaitForChild("Humanoid")
+	playerHRP = char:WaitForChild("HumanoidRootPart")
+	CharacterCached:Fire()
+end)
 
-local function _nnIsLive(conn)
+-- NnBind
+local nnPrCnt = 0
+
+local function nnIsLive(conn)
 	if conn == nil then return false end
-	if type(conn) == "table" and type(conn._connected) == "boolean" then
-		return conn._connected
+	if type(conn) == "table" and type(conn.connected) == "boolean" then
+		return conn.connected
 	end
 	local ok, res = pcall(function() return conn.Connected end)
 	return ok and res == true
 end
 
-local function _nnPrune(name)
+local function nnPrune(name)
 	local bucket = NNConn[name]
 	if type(bucket) ~= "table" then
 		NNConn[name] = nil
@@ -338,7 +347,7 @@ local function _nnPrune(name)
 	end
 	local write = 1
 	for i = 1, #bucket do
-		if _nnIsLive(bucket[i]) then
+		if nnIsLive(bucket[i]) then
 			bucket[write] = bucket[i]
 			write += 1
 		end
@@ -353,16 +362,16 @@ local NnBind = {}
 
 NnBind.connect = function(name, conn)
 	if not name or not conn then return conn end
-	_nnPrune(name)
+	nnPrune(name)
 	local bucket = NNConn[name]
 	if type(bucket) ~= "table" then
 		bucket = {}
 		NNConn[name] = bucket
 	end
 	table.insert(bucket, conn)
-	_nnPrCnt += 1
-	if _nnPrCnt % 128 == 0 then
-		for key in NNConn do _nnPrune(key) end
+	nnPrCnt += 1
+	if nnPrCnt % 128 == 0 then
+		for key in NNConn do nnPrune(key) end
 	end
 	return conn
 end
@@ -389,9 +398,8 @@ end
 
 NnBind.isConnected = function(name)
 	if not name then return false end
-	return _nnPrune(name) > 0
+	return nnPrune(name) > 0
 end
-local Cmds = {}
 
 -- Local Functions & Some Logic
 local cmdFrame = UI.CommandBar.frame
@@ -402,25 +410,22 @@ local hudSg = UI.HUD.sg
 local makeButtonHUD = UI.HUD.makeButton
 local makeToggleHUD = UI.HUD.makeToggle
 
-local clickingSugg = false
-local closeCmd = nil
-
 for i = 1, #suggItems do
 	local item = suggItems[i]
 	item.MouseButton1Down:Connect(function()
-		clickingSugg = true
+		rare.clickingSugg = true
 	end)
 	item.Activated:Connect(function()
 		local first = string.match(item.Text, "^([^/%s]+)")
 		local hasArgs = string.find(item.Text, "%[") or string.find(item.Text, "%(")
 		if hasArgs then
 			inputBox.Text = first .. " "
-			clickingSugg = false
+			rare.clickingSugg = false
 			inputBox:CaptureFocus()
 		else
 			inputBox.Text = first
-			clickingSugg = false
-			closeCmd(first)
+			rare.clickingSugg = false
+			rare.closeCmd(first)
 		end
 	end)
 end
@@ -604,7 +609,9 @@ local function runCommand(input)
 			stopEntry = aliasLookup["un" .. cmd:gsub("^lock", "unlock"):gsub("^loop", "unloop")]
 		end
 		if stopEntry and stopEntry.fn then
+			rare.nnSuppressNotify = true
 			stopEntry.fn()
+			rare.nnSuppressNotify = false
 		end
 		entry.fn(table.unpack(args, 2))
 	else
@@ -636,7 +643,7 @@ function UI.CommandBar.open()
 	end)
 end
 
-closeCmd = function(input)
+rare.closeCmd = function(input)
 	if not cmdOpen then
 		return
 	end
@@ -666,20 +673,20 @@ NnBind.connect("cmd_inputText", inputBox:GetPropertyChangedSignal("Text"):Connec
 end))
 
 NnBind.connect("cmd_focusLost", inputBox.FocusLost:Connect(function(enter)
-	if clickingSugg then
+	if rare.clickingSugg then
 		return
 	end
 	local input = string.lower(inputBox.Text)
 	if not enter then
-		closeCmd(nil)
+		rare.closeCmd(nil)
 		return
 	end
-	closeCmd(input)
+	rare.closeCmd(input)
 end))
 
 func.feat.loopwalkspeed = function(Speed)
 	local function applyWalkSpeed(char)
-		char = char or LocalPlayer.Character
+		char = char or playerChar
 		local hum = char and char:WaitForChild("Humanoid")
 		if not hum then
 			return
@@ -700,6 +707,7 @@ func.feat.loopwalkspeed = function(Speed)
 end
 
 func.feat.noclip = function()
+	notify("solar:ghost-bold", 3, "Noclip", "Noclip enabled.")
 	local function hookCharacter(character)
 		table.clear(noclipParts)
 
@@ -718,8 +726,8 @@ func.feat.noclip = function()
 		end))
 	end
 
-	if LocalPlayer.Character then
-		hookCharacter(LocalPlayer.Character)
+	if playerChar then
+		hookCharacter(playerChar)
 	end
 
 	NnBind.reconnect("noclip_charAdded", CharacterAdded:Connect(function(character)
@@ -734,13 +742,13 @@ func.feat.noclip = function()
 end
 
 func.feat.invisible = function()
-	local char = LocalPlayer.Character
+	local char = playerChar
 	if not char then
 		notify("lucide:eye-off", 4, "Invisible", "No character found.")
 		return
 	end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local hum = playerHum
+	local hrp = playerHRP
 	if not hum or not hrp then
 		notify("lucide:eye-off", 4, "Invisible", "No character found.")
 		return
@@ -752,8 +760,10 @@ func.feat.invisible = function()
 		end
 	end
 
+	notify("sfsymbols:eyeSlashFill", 3, "Invisible", "You are now invisible.")
+
 	NnBind.reconnect("invis_transparency", RunService.Stepped:Connect(function()
-		local c = LocalPlayer.Character
+		local c = playerChar
 		if not c then return end
 		for _, part in ipairs(c:GetDescendants()) do
 			if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Transparency == 0 then
@@ -763,9 +773,9 @@ func.feat.invisible = function()
 	end))
 
 	NnBind.reconnect("invis_heartbeat", RunService.Heartbeat:Connect(function()
-		local c = LocalPlayer.Character
-		local h = c and c:FindFirstChildOfClass("Humanoid")
-		local r = c and c:FindFirstChild("HumanoidRootPart")
+		local c = playerChar
+		local h = playerHum
+		local r = playerHRP
 		if not h or not r then return end
 
 		local origCFrame = r.CFrame
@@ -791,16 +801,18 @@ func.feat.fly = function(speed, vfly)
 
 	if flying then return end
 
-	local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-	local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-	local humanoid = character:WaitForChild("Humanoid")
+	notify("sfsymbols:birdFill", 3, "Fly", "Flying enabled.")
+
+	local character = playerChar or CharacterAdded:Wait()
+	local humanoidRootPart = playerHRP or character:WaitForChild("HumanoidRootPart")
+	local humanoid = playerHum or character:WaitForChild("Humanoid")
 
 	humanoid.PlatformStand = not vfly
 	flying = true
 
 	if vfly then
 		local function fixCamera()
-			local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+			local hum = playerHum
 			if hum and Camera.CameraSubject and Camera.CameraSubject.Name == "DriveSeat" then
 				Camera.CameraSubject = hum
 			end
@@ -825,9 +837,7 @@ func.feat.fly = function(speed, vfly)
 		local moveVector = Controls:GetMoveVector()
 		local camCFrame = Camera.CFrame
 
-		local direction = (camCFrame.RightVector * moveVector.X)
-			+ (camCFrame.LookVector * -moveVector.Z)
-			+ (Vector3.new(0, 1, 0) * moveVector.Y)
+		local direction = (camCFrame.RightVector * moveVector.X) + (camCFrame.LookVector * -moveVector.Z) + (Vector3.new(0, 1, 0) * moveVector.Y)
 
 		if direction.Magnitude > 0 then
 			bodyVelocity.Velocity = direction.Unit * flyspeed
@@ -841,10 +851,10 @@ end
 
 func.feat.unfly = function()
 	flying = false
+	notify("sfsymbols:birdFill", 3, "Fly", "Flying disabled.")
 
-	local character = LocalPlayer.Character
-	if character then
-		local humanoid = character:FindFirstChild("Humanoid")
+	if playerChar then
+		local humanoid = playerHum
 		if humanoid then
 			humanoid.PlatformStand = false
 		end
@@ -863,13 +873,61 @@ func.feat.unfly = function()
 	end
 end
 
+func.feat.startFc = function(speedArg)
+	local speed = tonumber(speedArg) or 5
+
+	if rare.fcPart then rare.fcPart:Destroy() end
+	local part = NewInstance("Part")
+	part.Anchored = true
+	part.CanCollide = false
+	part.Transparency = 1
+	part.CFrame = Camera.CFrame
+	part.Parent = workspace
+	rare.fcPart = part
+
+	Camera.CameraType = Enum.CameraType.Custom
+	Camera.CameraSubject = part
+
+	local root = playerHRP
+	if root then root.Anchored = true end
+
+	NnBind.reconnect("fc_char", CharacterAdded:Connect(function()
+		CharacterCached:Wait()
+		if playerHRP then playerHRP.Anchored = true end
+	end))
+
+	NnBind.reconnect("fc_stepped", RunService.RenderStepped:Connect(function(dt)
+		local mv = Controls:GetMoveVector()
+		local move = (Camera.CFrame.LookVector * -mv.Z) + (Camera.CFrame.RightVector * mv.X)
+		if move.X ~= 0 or move.Y ~= 0 or move.Z ~= 0 then
+			part.CFrame = part.CFrame + move * (speed * 25 * dt)
+		end
+	end))
+
+	notify("sfsymbols:camera", 3, "Freecam", "Enabled (speed " .. speed .. ").")
+end
+
+func.feat.stopFc = function()
+	NnBind.disconnect("fc_stepped")
+	NnBind.disconnect("fc_char")
+	if rare.fcPart then
+		rare.fcPart:Destroy()
+		rare.fcPart = nil
+	end
+	Camera.CameraType = Enum.CameraType.Custom
+	if playerHum then Camera.CameraSubject = playerHum end
+	local root = playerHRP
+	if root then root.Anchored = false end
+	notify("sfsymbols:camera", 3, "Freecam", "Disabled.")
+end
+
 func.feat.enableAntiVoid = function()
 	local function initVoidChar(char)
 		local hum = char:WaitForChild("Humanoid")
 		local root = char:WaitForChild("HumanoidRootPart")
 
 		NnBind.reconnect("antivoid_health", hum.HealthChanged:Connect(function()
-			if root.Position.Y <= fpdh + 20 then
+			if root.Position.Y <= rare.fpdh + 20 then
 				hum.Health = hum.MaxHealth
 			end
 		end))
@@ -883,8 +941,8 @@ func.feat.enableAntiVoid = function()
 		end
 	end))
 
-	local char = LocalPlayer.Character or CharacterAdded:Wait()
-	local root = char:WaitForChild("HumanoidRootPart")
+	local char = playerChar or CharacterAdded:Wait()
+	local root = playerHRP or char:WaitForChild("HumanoidRootPart")
 
 	local platform = workspace:FindFirstChild("VoidPlatform")
 	if not platform then
@@ -913,9 +971,8 @@ func.feat.enableAntiVoid = function()
 				break
 			end
 
-			local currentChar = LocalPlayer.Character
-			if currentChar then
-				local currentRoot = currentChar:FindFirstChild("HumanoidRootPart")
+			if playerChar then
+				local currentRoot = playerHRP
 				if currentRoot then
 					currentPlatform.Position = Vector3.new(currentRoot.Position.X, -5000, currentRoot.Position.Z)
 				end
@@ -929,6 +986,8 @@ func.feat.enableAntiVoid = function()
 	end))
 
 	initVoidChar(char)
+
+	notify("solar:shield-check-bold", 3, "AntiVoid", "Anti-void enabled.")
 end
 
 local function prefixMatch(...)
@@ -945,8 +1004,7 @@ local function prefixMatch(...)
 		if not found then
 			local len = #lname
 			for p in pairs(cachedPlayers) do
-				if string.sub(p.Name:lower(), 1, len) == lname
-					or string.sub(p.DisplayName:lower(), 1, len) == lname then
+				if string.sub(p.Name:lower(), 1, len) == lname or string.sub(p.DisplayName:lower(), 1, len) == lname then
 					found = p
 					break
 				end
@@ -964,8 +1022,8 @@ func.feat.fling = function(...)
 		return
 	end
 
-	local Character = LocalPlayer.Character
-	local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+	local Character = playerChar
+	local Humanoid = playerHum
 	local RootPart = Humanoid and Humanoid.RootPart
 
 	if not (Character and Humanoid and RootPart) then
@@ -1015,12 +1073,7 @@ func.feat.fling = function(...)
 			else
 				break
 			end
-		until BasePart.Velocity:Dot(BasePart.Velocity) > 250000
-			or BasePart.Parent ~= playerToFling.Character
-			or playerToFling.Parent == nil
-			or THumanoid.Sit
-			or Humanoid.Health <= 0
-			or tick() > Time + 2
+		until BasePart.Velocity:Dot(BasePart.Velocity) > 250000 or BasePart.Parent ~= playerToFling.Character or playerToFling.Parent == nil or THumanoid.Sit or Humanoid.Health <= 0 or tick() > Time + 2
 	end
 
 	local BV = NewInstance("BodyVelocity", RootPart)
@@ -1072,6 +1125,7 @@ func.feat.fling = function(...)
 	BV:Destroy()
 	Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
 	Camera.CameraSubject = Humanoid
+	notify("lucide:send", 3, "Fling", "Fling complete.")
 
 	if oldPos then
 		repeat
@@ -1089,21 +1143,18 @@ func.feat.fling = function(...)
 	end
 end
 
-local cmdListFrame = nil
-local cmdListScroll = nil
-local cmdListSearch = nil
 local cmdListItems = {}
 
 local populateCmdList
 
 func.build.cmdList = function()
-	if cmdListFrame then return end
+	if rare.cmdListFrame then return end
 	local built = UI.buildCmdListGui()
-	cmdListFrame = built.frame
-	cmdListSearch = built.search
-	cmdListScroll = built.scroll
-	cmdListSearch:GetPropertyChangedSignal("Text"):Connect(function()
-		populateCmdList(string.lower(cmdListSearch.Text))
+	rare.cmdListFrame = built.frame
+	rare.cmdListSearch = built.search
+	rare.cmdListScroll = built.scroll
+	rare.cmdListSearch:GetPropertyChangedSignal("Text"):Connect(function()
+		populateCmdList(string.lower(rare.cmdListSearch.Text))
 	end)
 end
 
@@ -1114,7 +1165,7 @@ populateCmdList = function(filter)
 		if show then
 			local item = cmdListItems[i]
 			if not item then
-				item = UI.buildCmdListRow(cmdListScroll)
+				item = UI.buildCmdListRow(rare.cmdListScroll)
 				cmdListItems[i] = item
 			end
 			item.indexLabel.Text = i .. "."
@@ -1129,11 +1180,11 @@ end
 
 DC.openCommandList = function()
 	func.build.cmdList()
-	cmdListSearch.Text = ""
+	rare.cmdListSearch.Text = ""
 	populateCmdList(nil)
-	cmdListFrame.Size = UDim2.new(0, 0, 0, 0)
-	cmdListFrame.Visible = true
-	TweenService:Create(cmdListFrame, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 300, 0, 380)}):Play()
+	rare.cmdListFrame.Size = UDim2.new(0, 0, 0, 0)
+	rare.cmdListFrame.Visible = true
+	TweenService:Create(rare.cmdListFrame, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 300, 0, 380)}):Play()
 end
 
 -- keybind system
@@ -1142,14 +1193,14 @@ local keybinds = {}
 local kbActiveStates = {}
 
 func.persist.saveKeybinds = function()
-	if not writefile then return end
-	if isfolder and makefolder and not isfolder("Noname") then makefolder("Noname") end
-	writefile("Noname/keybind.json", HttpService:JSONEncode(keybinds))
+	if not execapi.writefile then return end
+	if execapi.isfolder and execapi.makefolder and not execapi.isfolder("Noname") then execapi.makefolder("Noname") end
+	execapi.writefile("Noname/keybind.json", HttpService:JSONEncode(keybinds))
 end
 
 func.persist.loadKeybinds = function()
-	if not readfile or not isfile or not isfile("Noname/keybind.json") then return end
-	local raw = readfile("Noname/keybind.json")
+	if not execapi.readfile or not execapi.isfile or not execapi.isfile("Noname/keybind.json") then return end
+	local raw = execapi.readfile("Noname/keybind.json")
 	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
 	if ok and type(decoded) == "table" then keybinds = decoded end
 end
@@ -1159,9 +1210,7 @@ func.init.keybindListener = function()
 		if gp or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 		local keyName = input.KeyCode.Name:lower()
 		for _, kb in ipairs(keybinds) do
-			if kb.key and type(kb.key) == "string"
-				and kb.command and type(kb.command) == "string"
-				and kb.key:lower() == keyName then
+			if kb.key and type(kb.key) == "string" and kb.command and type(kb.command) == "string" and kb.key:lower() == keyName then
 				local cmd2 = kb.command
 				local arg2 = (kb.arg and kb.arg ~= "") and kb.arg or nil
 				local entry = aliasLookup[cmd2]
@@ -1189,14 +1238,14 @@ end
 -- Button system
 local buttons = {}
 func.persist.saveButtons = function()
-	if not writefile then return end
-	if isfolder and makefolder and not isfolder("Noname") then makefolder("Noname") end
-	writefile("Noname/button.json", HttpService:JSONEncode(buttons))
+	if not execapi.writefile then return end
+	if execapi.isfolder and execapi.makefolder and not execapi.isfolder("Noname") then execapi.makefolder("Noname") end
+	execapi.writefile("Noname/button.json", HttpService:JSONEncode(buttons))
 end
 
 func.persist.loadButtons = function()
-	if not readfile or not isfile or not isfile("Noname/button.json") then return end
-	local raw = readfile("Noname/button.json")
+	if not execapi.readfile or not execapi.isfile or not execapi.isfile("Noname/button.json") then return end
+	local raw = execapi.readfile("Noname/button.json")
 	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
 	if ok and type(decoded) == "table" then
 		table.clear(buttons)
@@ -1209,24 +1258,24 @@ func.persist.loadButtons = function()
 end
 
 func.persist.saveSettings = function()
-	if not writefile then return end
-	if isfolder and makefolder and not isfolder("Noname") then makefolder("Noname") end
+	if not execapi.writefile then return end
+	if execapi.isfolder and execapi.makefolder and not execapi.isfolder("Noname") then execapi.makefolder("Noname") end
 	local c = espOpts.color
-	writefile("Noname/Noname_Settings.json", HttpService:JSONEncode({
+	execapi.writefile("Noname/Noname_Settings.json", HttpService:JSONEncode({
 		esp_color = { r = math.floor(c.R * 255), g = math.floor(c.G * 255), b = math.floor(c.B * 255) },
 		esp_distance = espOpts.distance,
 		esp_health = espOpts.health,
 		esp_chamsonly = espOpts.chamsonly,
 		esp_colorByTeam = espOpts.colorByTeam,
 		esp_useCustomColor = espOpts.useCustomColor,
-		cmd_prefix = cmdPrefix,
-		ui_scale = uiScaleValue,
+		cmd_prefix = rare.cmdPrefix,
+		ui_scale = rare.uiScaleValue,
 	}))
 end
 
 func.persist.loadSettings = function()
-	if not readfile or not isfile or not isfile("Noname/Noname_Settings.json") then return end
-	local raw = readfile("Noname/Noname_Settings.json")
+	if not execapi.readfile or not execapi.isfile or not execapi.isfile("Noname/Noname_Settings.json") then return end
+	local raw = execapi.readfile("Noname/Noname_Settings.json")
 	local ok, decoded = pcall(function() return HttpService:JSONDecode(raw) end)
 	if not ok or type(decoded) ~= "table" then return end
 	if type(decoded.esp_color) == "table" then
@@ -1238,26 +1287,24 @@ func.persist.loadSettings = function()
 	if type(decoded.esp_chamsonly) == "boolean" then espOpts.chamsonly = decoded.esp_chamsonly end
 	if type(decoded.esp_colorByTeam) == "boolean" then espOpts.colorByTeam = decoded.esp_colorByTeam end
 	if type(decoded.esp_useCustomColor) == "boolean" then espOpts.useCustomColor = decoded.esp_useCustomColor end
-	if type(decoded.cmd_prefix) == "string" and decoded.cmd_prefix ~= "" then cmdPrefix = decoded.cmd_prefix end
-	if type(decoded.ui_scale) == "number" then uiScaleValue = decoded.ui_scale end
+	if type(decoded.cmd_prefix) == "string" and decoded.cmd_prefix ~= "" then rare.cmdPrefix = decoded.cmd_prefix end
+	if type(decoded.ui_scale) == "number" then rare.uiScaleValue = decoded.ui_scale end
 end
 
 func.build.managerGui = UI.buildManagerGui
 
 local kbGuiOpen = {v = false}
-local kbMainFrame = nil
-local kbManager = nil
 
 func.build.keybindGui = function()
 	local capturing = false
-	kbManager = func.build.managerGui({
+	rare.kbManager = func.build.managerGui({
 		sgName = "keybindpanel",
 		bz = 100,
 		title = "KEYBIND MANAGER",
 		icon = "⌨",
 		accentColor = Color3.fromRGB(255, 255, 255),
 		guiOpenRef = kbGuiOpen,
-		mainFrameSetter = function(f) kbMainFrame = f end,
+		mainFrameSetter = function(f) rare.kbMainFrame = f end,
 		row2Left = function(cont, BZ)
 			local lbl = NewInstance("TextLabel", cont)
 			lbl.Size = UDim2.new(0, 178, 0, 14)
@@ -1361,8 +1408,8 @@ func.build.keybindGui = function()
 				end
 			end
 			if removed then
-				if not writefile then return end
-				writefile("Noname/keybind.json", HttpService:JSONEncode(keybinds))
+				if not execapi.writefile then return end
+				execapi.writefile("Noname/keybind.json", HttpService:JSONEncode(keybinds))
 				func.init.keybindListener()
 				cmdIn.Text = ""
 				argIn.Text = ""
@@ -1375,23 +1422,21 @@ func.build.keybindGui = function()
 end
 
 DC.openKeybindGui = function()
-	if not kbMainFrame then func.build.keybindGui() end
-	kbManager.toggle()
+	if not rare.kbMainFrame then func.build.keybindGui() end
+	rare.kbManager.toggle()
 end
 
 local btnGuiOpen = {v = false}
-local btnMainFrame = nil
-local btnManager = nil
 
 func.build.commandButtonGui = function()
-	btnManager = func.build.managerGui({
+	rare.btnManager = func.build.managerGui({
 		sgName = "NNButtonPanel",
 		bz = 102,
 		title = "BUTTON MANAGER",
 		icon = "⊞",
 		accentColor = Color3.fromRGB(255, 255, 255),
 		guiOpenRef = btnGuiOpen,
-		mainFrameSetter = function(f) btnMainFrame = f end,
+		mainFrameSetter = function(f) rare.btnMainFrame = f end,
 		row2Left = nil,
 		ddLabel = "Saved Button",
 		ddPlaceholder = "Select button",
@@ -1467,8 +1512,8 @@ func.build.commandButtonGui = function()
 end
 
 DC.commandButton = function()
-	if not btnMainFrame then func.build.commandButtonGui() end
-	btnManager.toggle()
+	if not rare.btnMainFrame then func.build.commandButtonGui() end
+	rare.btnManager.toggle()
 end
 
 local espObjects = {}
@@ -1477,7 +1522,7 @@ local espFolder = NewInstance("Folder")
 espFolder.Parent = workspace
 
 func.esp.clearAll = function()
-	espActive = false
+	rare.espActive = false
 	NnBind.disconnect("esp_playerAdded")
 	NnBind.disconnect("esp_playerRemoving")
 	for player in pairs(cachedPlayers) do
@@ -1507,8 +1552,7 @@ local function getESPColor(player, char)
 		return player.TeamColor.Color
 	end
 
-	local lc = LocalPlayer.Character
-	local lr = lc and lc:FindFirstChild("HumanoidRootPart")
+	local lr = playerHRP
 	local tr = char and char:FindFirstChild("HumanoidRootPart")
 	if lr and tr then
 		local delta = lr.Position - tr.Position
@@ -1555,12 +1599,9 @@ func.esp.apply = function(player, color, opts)
 	end
 
 	if not opts.chamsonly then
-		local adornPart = char:FindFirstChild("Head")
-		             or char:FindFirstChild("HumanoidRootPart")
+		local adornPart = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
 		if adornPart then
-			local lineCount = 1
-				+ (opts.health and 1 or 0)
-				+ (opts.distance and 1 or 0)
+			local lineCount = 1 + (opts.health and 1 or 0) + (opts.distance and 1 or 0)
 
 			billboard = NewInstance("BillboardGui")
 			billboard.Adornee = adornPart
@@ -1618,8 +1659,7 @@ func.esp.apply = function(player, color, opts)
 
 	if needsRenderStepped then
 		NnBind.reconnect("esp_dist_" .. player.Name, RunService.RenderStepped:Connect(function()
-			local lc = LocalPlayer.Character
-			local lr = lc and lc:FindFirstChild("HumanoidRootPart")
+			local lr = playerHRP
 			local tr = char:FindFirstChild("HumanoidRootPart")
 			if not (lr and tr) then return end
 			local delta = lr.Position - tr.Position
@@ -1629,9 +1669,7 @@ func.esp.apply = function(player, color, opts)
 				rebuildLabel()
 			end
 			if not espOpts.useCustomColor and not espOpts.colorByTeam then
-				local newColor = distSq > 10000 and Color3.fromRGB(0, 255, 0)
-					or distSq >= 2500 and Color3.fromRGB(255, 165, 0)
-					or Color3.fromRGB(255, 0, 0)
+				local newColor = distSq > 10000 and Color3.fromRGB(0, 255, 0) or distSq >= 2500 and Color3.fromRGB(255, 165, 0) or Color3.fromRGB(255, 0, 0)
 				if highlight.FillColor ~= newColor then
 					highlight.FillColor = newColor
 					highlight.OutlineColor = newColor
@@ -1649,7 +1687,7 @@ func.esp.apply = function(player, color, opts)
 end
 
 func.feat.enableESPAll = function()
-	espActive = true
+	rare.espActive = true
 
 	local function cleanChar(char)
 		local obj = espObjects[char]
@@ -1699,6 +1737,8 @@ func.feat.enableESPAll = function()
 			func.esp.apply(player, espOpts.color, espOpts)
 		end
 	end
+
+	notify("solar:eye-bold", 3, "ESP", "ESP applied to all players.")
 end
 
 func.feat.enableInstantPP = function()
@@ -1709,18 +1749,19 @@ func.feat.enableInstantPP = function()
 	end
 	for _, v in ipairs(workspace:GetDescendants()) do apply(v) end
 	NnBind.reconnect("ipp_added", workspace.DescendantAdded:Connect(apply))
+	notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts enabled.")
 end
 
 func.feat.unwatch = function()
 	NnBind.disconnect("watch_removing")
 	NnBind.disconnect("watch_character")
 
-	if not LocalPlayer.Character then
+	if not playerChar then
 		notify("lucide:triangle-alert", 4, "Watch", "LocalPlayer character not found. Waiting for character...")
 	end
 
-	local character = LocalPlayer.Character or CharacterAdded:Wait()
-	Camera.CameraSubject = character:FindFirstChildOfClass("Humanoid")
+	Camera.CameraSubject = playerHum or (playerChar and playerChar:FindFirstChildOfClass("Humanoid"))
+	notify("sfsymbols:eyes", 3, "Watch", "Stopped watching.")
 end
 
 func.feat.watch = function(player)
@@ -1730,6 +1771,7 @@ func.feat.watch = function(player)
 
 	if player.Character then
 		updateCamera(player.Character)
+		notify("sfsymbols:eyes", 3, "Watch", "Now watching " .. player.Name .. ".")
 	else
 		notify("lucide:user-x", 4, "Watch", player.Name .. " has no character yet. Waiting for spawn...")
 	end
@@ -1814,8 +1856,7 @@ targetButton.Activated:Connect(function()
 
 	if acInputConn then acInputConn:Disconnect() end
 	acInputConn = UserInputService.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			acTargetX = input.Position.X
 			acTargetY = input.Position.Y
 			targetDot.Position = UDim2.new(0, acTargetX, 0, acTargetY)
@@ -1850,46 +1891,63 @@ end)
 	end)
 end
 
+local function setProp(inst, prop, val)
+	if inst[prop] ~= val then
+		inst[prop] = val
+	end
+end
+
+local function safesetprop(inst, prop, val)
+	if inst[prop] == val then return end
+	if execapi.sethiddenproperty then
+		if not pcall(execapi.sethiddenproperty, inst, prop, val) then
+			pcall(function() inst[prop] = val end)
+		end
+	else
+		pcall(function() inst[prop] = val end)
+	end
+end
+
 local function safehook(object, metamethod, hook, useCheckcaller)
 	local original
 	local function proxy(...)
-		if useCheckcaller and hookapi.checkcaller and hookapi.checkcaller() then
+		if useCheckcaller and execapi.checkcaller and execapi.checkcaller() then
 			return original(...)
 		end
 		return hook(...)
 	end
-	local wrappedHook = hookapi.newcclosure and hookapi.newcclosure(proxy) or proxy
-	if hookapi.setstackhidden then
-		hookapi.setstackhidden(wrappedHook, true)
+	local wrappedHook = execapi.newcclosure and execapi.newcclosure(proxy) or proxy
+	if execapi.setstackhidden then
+		execapi.setstackhidden(wrappedHook, true)
 	end
 
-	if hookapi.hookmetamethod then
-		original = hookapi.hookmetamethod(object, metamethod, wrappedHook)
+	if execapi.hookmetamethod then
+		original = execapi.hookmetamethod(object, metamethod, wrappedHook)
 		return original
 	end
 
-	if not hookapi.getrawmetatable then
+	if not execapi.getrawmetatable then
 		notify("lucide:triangle-alert", 4, "safehook", "Executor does not support metamethod hooking.")
 		return nil
 	end
-	local mt = hookapi.getrawmetatable(object)
+	local mt = execapi.getrawmetatable(object)
 	if not mt then
 		notify("lucide:triangle-alert", 4, "safehook", "Executor does not support metamethod hooking.")
 		return nil
 	end
 
-	if hookapi.hookfunction then
-		original = hookapi.hookfunction(mt[metamethod], wrappedHook)
+	if execapi.hookfunction then
+		original = execapi.hookfunction(mt[metamethod], wrappedHook)
 		return original
 	end
 
 	original = mt[metamethod]
-	if hookapi.setreadonly then
-		hookapi.setreadonly(mt, false)
+	if execapi.setreadonly then
+		execapi.setreadonly(mt, false)
 	end
 	mt[metamethod] = wrappedHook
-	if hookapi.setreadonly then
-		hookapi.setreadonly(mt, true)
+	if execapi.setreadonly then
+		execapi.setreadonly(mt, true)
 	end
 	return original
 end
@@ -1897,26 +1955,26 @@ end
 local function safeunhook(object, metamethod, original)
 	if not original then return false end
 
-	if hookapi.hookmetamethod then
-		hookapi.hookmetamethod(object, metamethod, original)
+	if execapi.hookmetamethod then
+		execapi.hookmetamethod(object, metamethod, original)
 		return true
 	end
 
-	if not hookapi.getrawmetatable then return false end
-	local mt = hookapi.getrawmetatable(object)
+	if not execapi.getrawmetatable then return false end
+	local mt = execapi.getrawmetatable(object)
 	if not mt then return false end
 
-	if hookapi.hookfunction then
-		hookapi.hookfunction(mt[metamethod], original)
+	if execapi.hookfunction then
+		execapi.hookfunction(mt[metamethod], original)
 		return true
 	end
 
-	if hookapi.setreadonly then
-		hookapi.setreadonly(mt, false)
+	if execapi.setreadonly then
+		execapi.setreadonly(mt, false)
 	end
 	mt[metamethod] = original
-	if hookapi.setreadonly then
-		hookapi.setreadonly(mt, true)
+	if execapi.setreadonly then
+		execapi.setreadonly(mt, true)
 	end
 	return true
 end
@@ -1934,11 +1992,14 @@ local function predictPosition(part)
 	return part.Position + right * part.AssemblyLinearVelocity:Dot(right) * 0.1
 end
 
-func.feat.godmode = function(mode)
-	godmode.mode = (mode == "hook") and "hook" or "nohook"
+local function getGuiParent()
+	return pcall(gethui) and gethui() or pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+end
 
-	local char = LocalPlayer.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
+func.feat.godmode = function(mode)
+	rare.god_mode = (mode == "hook") and "hook" or "nohook"
+
+	local hum = playerHum
 	if not hum then
 		notify("lucide:triangle-alert", 4, "GodMode", "No character found.")
 		return
@@ -1973,23 +2034,23 @@ func.feat.godmode = function(mode)
 				notify("lucide:triangle-alert", 4, "GodMode", "Hook failed, falling back to nohook.")
 				m = "nohook"
 			else
-				godmode.humanoid = h
+				rare.god_hum = h
 
-				if not godmode.origNI or not godmode.origNC then
-					godmode.origNI = safehook(game, "__newindex", function(self, key, value)
-						if godmode.mode == "hook" and godmode.humanoid and self == godmode.humanoid then
+				if not rare.god_origNI or not rare.god_origNC then
+					rare.god_origNI = safehook(game, "__newindex", function(self, key, value)
+						if rare.god_mode == "hook" and rare.god_hum and self == rare.god_hum then
 							if key == "Health" and type(value) == "number" and value <= 0 then return end
-							if key == "MaxHealth" and type(value) == "number" and value < godmode.humanoid.MaxHealth then return end
+							if key == "MaxHealth" and type(value) == "number" and value < rare.god_hum.MaxHealth then return end
 							if key == "BreakJointsOnDeath" and value == true then return end
 							if key == "Parent" and value == nil then return end
 						end
-						return godmode.origNI(self, key, value)
+						return rare.god_origNI(self, key, value)
 					end, true)
 
-					godmode.origNC = safehook(game, "__namecall", function(self, ...)
-						if godmode.mode == "hook" then
+					rare.god_origNC = safehook(game, "__namecall", function(self, ...)
+						if rare.god_mode == "hook" then
 							local method = getnamecallmethod()
-							if godmode.humanoid and self == godmode.humanoid then
+							if rare.god_hum and self == rare.god_hum then
 								if method == "ChangeState" then
 									local st = ...
 									if st == Enum.HumanoidStateType.Dead then return end
@@ -2000,13 +2061,12 @@ func.feat.godmode = function(mode)
 								end
 								if method == "Destroy" then return end
 							end
-							local char = LocalPlayer.Character
-							if char and self == char and method == "BreakJoints" then return end
+							if self == playerChar and method == "BreakJoints" then return end
 						end
-						return godmode.origNC(self, ...)
+						return rare.god_origNC(self, ...)
 					end, true)
 
-					if not godmode.origNI or not godmode.origNC then
+					if not rare.god_origNI or not rare.god_origNC then
 						notify("lucide:triangle-alert", 4, "GodMode", "Hook failed, falling back to nohook.")
 						m = "nohook"
 					end
@@ -2030,12 +2090,12 @@ func.feat.godmode = function(mode)
 		end
 	end
 
-	applyGodmode(godmode.mode, hum)
+	applyGodmode(rare.god_mode, hum)
+	notify("sfsymbols:heartFill", 3, "GodMode", "Enabled (" .. (rare.god_mode or "nohook") .. ").")
 
-	NnBind.reconnect("gm_charAdded", CharacterAdded:Connect(function(newChar)
-		task.wait(0.1)
-		local newHum = newChar:FindFirstChildOfClass("Humanoid")
-		if newHum then applyGodmode(godmode.mode, newHum) end
+	NnBind.reconnect("gm_charAdded", CharacterAdded:Connect(function()
+		CharacterCached:Wait()
+		if playerHum then applyGodmode(rare.god_mode, playerHum) end
 	end))
 end
 
@@ -2045,8 +2105,8 @@ do
 
 	func.feat.antinvisfling = function(AntiInvis, AntiFling)
 		local wasActive = nvfHooksActive
-		nfvIsOn.antiInvis = AntiInvis
-		nfvIsOn.antiFling = AntiFling
+		rare.antiInvis = AntiInvis
+		rare.antiFling = AntiFling
 
 		if not AntiInvis and not AntiFling then
 			NnBind.disconnect("nvf_playerAdded")
@@ -2064,10 +2124,10 @@ do
 
 		if wasActive then
 			for part in pairs(nvfParts) do
-				if nfvIsOn.antiInvis and part.Name ~= "HumanoidRootPart" then
+				if rare.antiInvis and part.Name ~= "HumanoidRootPart" then
 					part.Transparency = 0
 					NnBind.reconnect("antiinvis_" .. part:GetDebugId(), part:GetPropertyChangedSignal("Transparency"):Connect(function()
-						if nfvIsOn.antiInvis and part.Transparency ~= 0 then part.Transparency = 0 end
+						if rare.antiInvis and part.Transparency ~= 0 then part.Transparency = 0 end
 					end))
 				else
 					NnBind.disconnect("antiinvis_" .. part:GetDebugId())
@@ -2080,14 +2140,14 @@ do
 			if not part:IsA("BasePart") then return end
 			nvfParts[part] = true
 
-			if nfvIsOn.antiFling then
+			if rare.antiFling then
 				part.CanCollide = false
 			end
 
-			if nfvIsOn.antiInvis and part.Name ~= "HumanoidRootPart" then
+			if rare.antiInvis and part.Name ~= "HumanoidRootPart" then
 				part.Transparency = 0
 				NnBind.reconnect("antiinvis_" .. part:GetDebugId(), part:GetPropertyChangedSignal("Transparency"):Connect(function()
-					if nfvIsOn.antiInvis and part.Transparency ~= 0 then part.Transparency = 0 end
+					if rare.antiInvis and part.Transparency ~= 0 then part.Transparency = 0 end
 				end))
 			end
 		end
@@ -2125,6 +2185,9 @@ end
 
 func.feat.antiAfk = function(mode)
 	afkMode = mode
+	if mode ~= nil then
+		notify("geist:cursor-click", 3, "Anti-AFK", "Enabled (" .. tostring(mode) .. ").")
+	end
 	task.spawn(function()
 		while afkMode do
 			task.wait(60)
@@ -2139,9 +2202,7 @@ func.feat.antiAfk = function(mode)
 					Vim:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
 				end
 			else
-				local char = LocalPlayer.Character
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+				if playerHum then playerHum:ChangeState(Enum.HumanoidStateType.Jumping) end
 			end
 		end
 	end)
@@ -2164,11 +2225,11 @@ Cmd.add({"walkspeed", "ws"}, {
 	fn = function(speed)
 		speed = tonumber(speed)
 		if not speed then return end
-		local char = LocalPlayer.Character
-		if char then
-			local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if playerChar then
+			local humanoid = playerHum
 			if humanoid then
 				humanoid.WalkSpeed = speed
+				notify("sfsymbols:figureWalk", 3, "WalkSpeed", "Set to " .. tostring(speed))
 			end
 		end
 	end
@@ -2178,6 +2239,7 @@ Cmd.add({"loopwalkspeed", "loopws", "lws"}, {
 	args = "speed",
 	fn = function(speed)
 		func.feat.loopwalkspeed(tonumber(speed))
+		notify("geist:loader-circle", 3, "LoopWalkSpeed", "Looping at " .. tostring(speed))
 	end,
 })
 
@@ -2185,6 +2247,7 @@ Cmd.add({"unloopwalkspeed", "unloopws", "unlws"}, {
 	fn = function()
 		NnBind.disconnect("ws_changed")
 		NnBind.disconnect("ws_charAdded")
+		notify("geist:loader-circle", 3, "LoopWalkSpeed", "Loop stopped.")
 	end,
 })
 
@@ -2195,14 +2258,14 @@ Cmd.add({"tpwalkspeed", "tpwalk"}, {
 		local stepRate = 1 / 60
 		local maxSteps = 3
 		local accumulator = 0
+		notify("sfsymbols:hareFill", 3, "TpWalkSpeed", "TP walk set to " .. tostring(speed))
 		NnBind.reconnect("tpwalk", RunService.Heartbeat:Connect(function(deltaTime)
 			accumulator = math.min(accumulator + (tonumber(deltaTime) or 0), stepRate * maxSteps)
-			local char = LocalPlayer.Character
-			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-			if not humanoid or not char or humanoid.MoveDirection.Magnitude <= 0 then return end
+			local humanoid = playerHum
+			if not humanoid or not playerChar or humanoid.MoveDirection.Magnitude <= 0 then return end
 			local steps = 0
 			while accumulator >= stepRate and steps < maxSteps do
-				char:TranslateBy(humanoid.MoveDirection * speed * stepRate * 10)
+				playerChar:TranslateBy(humanoid.MoveDirection * speed * stepRate * 10)
 				accumulator -= stepRate
 				steps += 1
 			end
@@ -2213,6 +2276,7 @@ Cmd.add({"tpwalkspeed", "tpwalk"}, {
 Cmd.add({"untpwalkspeed", "untpwalk"}, {
 	fn = function()
 		NnBind.disconnect("tpwalk")
+		notify("sfsymbols:tortoiseFill", 3, "TpWalkSpeed", "TP walk stopped.")
 	end,
 })
 
@@ -2221,11 +2285,11 @@ Cmd.add({"jumppower", "jp"}, {
 	fn = function(power)
 		power = tonumber(power)
 		if not power then return end
-		local char = LocalPlayer.Character
-		if char then
-			local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if playerChar then
+			local humanoid = playerHum
 			if humanoid then
 				humanoid.JumpPower = power
+				notify("sfsymbols:arrowUpCircleFill", 3, "JumpPower", "Set to " .. tostring(power))
 			end
 		end
 	end
@@ -2237,7 +2301,7 @@ Cmd.add({"loopjumppower", "loopjp"}, {
 		power = tonumber(power)
 		if not power then return end
 		local function apply(char)
-			char = char or LocalPlayer.Character
+			char = char or playerChar
 			local hum = char and char:WaitForChild("Humanoid")
 			if not hum then return end
 			hum.JumpPower = power
@@ -2247,6 +2311,7 @@ Cmd.add({"loopjumppower", "loopjp"}, {
 		end
 		apply()
 		NnBind.reconnect("jp_charAdded", CharacterAdded:Connect(apply))
+		notify("geist:loader-circle", 3, "LoopJumpPower", "Looping at " .. tostring(power))
 	end,
 })
 
@@ -2254,19 +2319,55 @@ Cmd.add({"unloopjumppower", "unloopjp"}, {
 	fn = function()
 		NnBind.disconnect("jp_changed")
 		NnBind.disconnect("jp_charAdded")
+		notify("geist:loader-circle", 3, "LoopJumpPower", "Loop stopped.")
 	end,
 })
 
 Cmd.add({"resetchar", "respawn", "reset"}, {
 	fn = function()
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local hum = playerHum
 		if not hum then
 			notify("lucide:triangle-alert", 4, "Reset", "No character found.")
 			return
 		end
+		notify("lucide:refresh-cw", 3, "Reset", "Resetting character...")
 		hum.Health = 0
 		hum:Destroy()
+	end,
+})
+
+Cmd.add({"CopyAttribute", "CopyAttr", "Attribute", "Attr"}, {
+	fn = function()
+		local char = playerChar or CharacterAdded:Wait()
+		local collected = {}
+
+		for _, src in ipairs({ LocalPlayer, char }) do
+			for name, value in pairs(src:GetAttributes()) do
+				if collected[name] == nil then
+					collected[name] = value
+				end
+			end
+		end
+
+		if not next(collected) then
+			notify("lucide:triangle-alert", 4, "CopyAttribute", "No attributes found.")
+			return
+		end
+
+		local lines = { "[Attributes]" }
+		for name, value in pairs(collected) do
+			lines[#lines + 1] = name .. " = " .. tostring(value) .. " [" .. typeof(value) .. "]"
+		end
+
+		local result = table.concat(lines, "\n")
+
+		if execapi.clipboard then
+			execapi.clipboard(result)
+			notify("craft:clipboard-stroke", 3, "CopyAttribute", "Attributes copied to clipboard.")
+		else
+			print(result)
+			notify("lucide:triangle-alert", 4, "CopyAttribute", "Clipboard API not available — printed to console.")
+		end
 	end,
 })
 
@@ -2287,8 +2388,7 @@ Cmd.add({"copyposition", "copypos", "cpos"}, {
 				return
 			end
 		else
-			local char = LocalPlayer.Character
-			targetHRP = char and char:FindFirstChild("HumanoidRootPart")
+			targetHRP = playerHRP
 			if not targetHRP then
 				notify("lucide:triangle-alert", 4, "CopyPos", "Your character was not found.")
 				return
@@ -2298,10 +2398,12 @@ Cmd.add({"copyposition", "copypos", "cpos"}, {
 		local pos = targetHRP.Position
 		local str = string.format("%.3f, %.3f, %.3f", pos.X, pos.Y, pos.Z)
 
-		if clipboard then
-			clipboard(str)
+		if execapi.clipboard then
+			execapi.clipboard(str)
+			notify("craft:clipboard-stroke", 3, "CopyPos", "Position copied: " .. str)
 		else
 			print("Position: " .. str)
+			notify("lucide:triangle-alert", 4, "CopyPos", "Clipboard API not available — printed to console.")
 		end
 	end,
 })
@@ -2333,6 +2435,7 @@ Cmd.add({"vehiclefly", "vfly"}, {
 	args = "speed",
 	fn = function(speed)
 		func.feat.fly(tonumber(speed) or 1, true)
+		notify("craft:rocket-stroke", 3, "Vehicle Fly", "Vehicle fly enabled.")
 	end,
 	hud = "toggle",
 	hudPlaceholder = "speed",
@@ -2349,18 +2452,43 @@ DC.startVfly = function(speed) func.feat.fly(tonumber(speed) or 1, true) end
 DC.stopVfly = func.feat.unfly
 
 Cmd.add({"unvehiclefly", "unvfly"}, {
-	fn = func.feat.unfly,
+	fn = function()
+		func.feat.unfly()
+		notify("craft:rocket-stroke", 3, "Vehicle Fly", "Vehicle fly disabled.")
+	end,
+})
+
+Cmd.add({"freecam", "fc"}, {
+	args = "speed",
+	fn = function(speed) func.feat.startFc(tonumber(speed)) end,
+	hud = "toggle",
+	hudPlaceholder = "speed",
+	hudDefault = 5,
+	hudLabelOn = "freecam",
+	hudLabelOff = "unfreecam",
+	hudOn = {"freecam", "fc"},
+	hudOff = {"unfreecam", "unfc"},
+	hudStart = "startFc",
+	hudStop = "stopFc",
+})
+
+DC.startFc = function(speed) func.feat.startFc(tonumber(speed)) end
+DC.stopFc = func.feat.stopFc
+
+Cmd.add({"unfreecam", "unfc"}, {
+	fn = func.feat.stopFc,
 })
 
 Cmd.add({"freeze"}, {
 	fn = function()
-		local character = LocalPlayer.Character
+		local character = playerChar
 		if not character then return end
 		for _, part in ipairs(character:GetDescendants()) do
 			if part:IsA("BasePart") then
 				part.Anchored = true
 			end
 		end
+		notify("lucide:snowflake", 3, "Freeze", "Character frozen.")
 	end,
 	hud = "toggle",
 	hudLabelOn = "freeze",
@@ -2372,7 +2500,7 @@ Cmd.add({"freeze"}, {
 })
 
 DC.startFreeze = function()
-	local character = LocalPlayer.Character
+	local character = playerChar
 	if not character then return end
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") then
@@ -2381,7 +2509,7 @@ DC.startFreeze = function()
 	end
 end
 DC.stopFreeze = function()
-	local character = LocalPlayer.Character
+	local character = playerChar
 	if not character then return end
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") then
@@ -2392,13 +2520,14 @@ end
 
 Cmd.add({"unfreeze"}, {
 	fn = function()
-		local character = LocalPlayer.Character
+		local character = playerChar
 		if not character then return end
 		for _, part in ipairs(character:GetDescendants()) do
 			if part:IsA("BasePart") then
 				part.Anchored = false
 			end
 		end
+		notify("sfsymbols:flameFill", 3, "Freeze", "Character unfrozen.")
 	end,
 })
 
@@ -2416,6 +2545,7 @@ Cmd.add({"unnoclip", "clip", "unnc"}, {
 			part.CanCollide = true
 		end
 		table.clear(noclipParts)
+		notify("solar:ghost-bold", 3, "Noclip", "Noclip disabled.")
 	end,
 })
 
@@ -2429,7 +2559,7 @@ Cmd.add({"uninvisible", "uninvis"}, {
 		NnBind.disconnect("invis_heartbeat")
 		NnBind.disconnect("invis_charAdded")
 
-		local char = LocalPlayer.Character
+		local char = playerChar
 		if char then
 			for _, part in ipairs(char:GetDescendants()) do
 				if part:IsA("BasePart") and part.Transparency == 0.5 then
@@ -2437,32 +2567,47 @@ Cmd.add({"uninvisible", "uninvis"}, {
 				end
 			end
 		end
+		notify("sfsymbols:eyeFill", 3, "Invisible", "Visibility restored.")
 	end,
 })
 
 Cmd.add({"antiinvisible", "antiinvis", "avis"}, {
-	fn = function() func.feat.antinvisfling(true, nfvIsOn.antiFling) end,
+	fn = function()
+		func.feat.antinvisfling(true, rare.antiFling)
+		notify("gravity:eye", 3, "AntiInvis", "Anti-invisible enabled.")
+	end,
 })
 
 Cmd.add({"unantiinvisible", "unantiinvis", "unavis"}, {
-	fn = function() func.feat.antinvisfling(false, nfvIsOn.antiFling) end,
+	fn = function()
+		func.feat.antinvisfling(false, rare.antiFling)
+		notify("gravity:eye-slash", 3, "AntiInvis", "Anti-invisible disabled.")
+	end,
 })
 
 Cmd.add({"antifling"}, {
-	fn = function() func.feat.antinvisfling(nfvIsOn.antiInvis, true) end,
+	fn = function()
+		func.feat.antinvisfling(rare.antiInvis, true)
+		notify("gravity:shield", 3, "AntiFling", "Anti-fling enabled.")
+	end,
 })
 
 Cmd.add({"unantifling"}, {
-	fn = function() func.feat.antinvisfling(nfvIsOn.antiInvis, false) end,
+	fn = function()
+		func.feat.antinvisfling(rare.antiInvis, false)
+		notify("gravity:shield", 3, "AntiFling", "Anti-fling disabled.")
+	end,
 })
 
 Cmd.add({"GameId"}, {
 	fn = function()
 		local id = tostring(game.GameId)
-		if clipboard then
-			clipboard(id)
+		if execapi.clipboard then
+			execapi.clipboard(id)
+			notify("craft:clipboard-stroke", 3, "GameId", "Universe ID copied: " .. id)
 		else
 			print("Universe ID: " .. id)
+			notify("lucide:triangle-alert", 4, "GameId", "Clipboard API not available — printed to console.")
 		end
 	end,
 })
@@ -2470,10 +2615,12 @@ Cmd.add({"GameId"}, {
 Cmd.add({"PlaceId"}, {
 	fn = function()
 		local id = tostring(game.PlaceId)
-		if clipboard then
-			clipboard(id)
+		if execapi.clipboard then
+			execapi.clipboard(id)
+			notify("craft:clipboard-stroke", 3, "PlaceId", "Place ID copied: " .. id)
 		else
 			print("Place ID: " .. id)
+			notify("lucide:triangle-alert", 4, "PlaceId", "Clipboard API not available — printed to console.")
 		end
 	end,
 })
@@ -2481,10 +2628,12 @@ Cmd.add({"PlaceId"}, {
 Cmd.add({"jobid"}, {
 	fn = function()
 		local id = tostring(game.JobId)
-		if clipboard then
-			clipboard(id)
+		if execapi.clipboard then
+			execapi.clipboard(id)
+			notify("craft:clipboard-stroke", 3, "JobId", "Job ID copied: " .. id)
 		else
 			print("Job ID: " .. id)
+			notify("lucide:triangle-alert", 4, "JobId", "Clipboard API not available — printed to console.")
 		end
 	end,
 })
@@ -2494,6 +2643,7 @@ Cmd.add({"joinplaceid"}, {
 	fn = function(placeId)
 		placeId = tonumber(placeId)
 		if not placeId then return end
+		notify("sfsymbols:doorLeftHandOpen", 3, "JoinPlaceId", "Joining place " .. tostring(placeId) .. "...")
 		TeleportService:Teleport(placeId, LocalPlayer)
 	end,
 })
@@ -2502,6 +2652,7 @@ Cmd.add({"joinjobid"}, {
 	args = "jobid",
 	fn = function(jobId)
 		if not jobId then return end
+		notify("geist:database", 3, "JoinJobId", "Joining server " .. tostring(jobId) .. "...")
 		TeleportService:TeleportToPlaceInstance(game.PlaceId, jobId, LocalPlayer)
 	end,
 })
@@ -2519,19 +2670,19 @@ Cmd.add({"unantivoid"}, {
 		if platform then
 			platform:Destroy()
 		end
-		workspace.FallenPartsDestroyHeight = fpdh
+		workspace.FallenPartsDestroyHeight = rare.fpdh
+		notify("solar:shield-check-bold", 3, "AntiVoid", "Anti-void disabled.")
 	end,
 })
 
 Cmd.add({"fixcam", "fixcamera"}, {
 	fn = function()
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		Camera.CameraType = Enum.CameraType.Custom
-		Camera.CameraSubject = hum or char
+		Camera.CameraSubject = playerHum or playerChar
 		LocalPlayer.CameraMode = Enum.CameraMode.Classic
 		LocalPlayer.CameraMinZoomDistance = 0.5
 		LocalPlayer.CameraMaxZoomDistance = 1e7
+		notify("geist:external", 3, "FixCam", "Camera fixed.")
 	end,
 })
 
@@ -2541,6 +2692,7 @@ Cmd.add({"minzoom"}, {
 		value = tonumber(value)
 		if not value then return end
 		LocalPlayer.CameraMinZoomDistance = value
+		notify("lucide:zoom-in", 3, "MinZoom", "Set to " .. tostring(value))
 	end,
 })
 
@@ -2550,6 +2702,7 @@ Cmd.add({"maxzoom"}, {
 		value = tonumber(value)
 		if not value then return end
 		LocalPlayer.CameraMaxZoomDistance = value
+		notify("lucide:zoom-out", 3, "MaxZoom", "Set to " .. tostring(value))
 	end,
 })
 
@@ -2564,12 +2717,14 @@ Cmd.add({"loopminzoom"}, {
 				LocalPlayer.CameraMinZoomDistance = value
 			end
 		end))
+		notify("lucide:zoom-in", 3, "LoopMinZoom", "Looping at " .. tostring(value))
 	end,
 })
 
 Cmd.add({"unloopminzoom"}, {
 	fn = function()
 		NnBind.disconnect("loopminzoom")
+		notify("lucide:zoom-in", 3, "LoopMinZoom", "Loop stopped.")
 	end,
 })
 
@@ -2584,17 +2739,20 @@ Cmd.add({"loopmaxzoom"}, {
 				LocalPlayer.CameraMaxZoomDistance = value
 			end
 		end))
+		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Looping at " .. tostring(value))
 	end,
 })
 
 Cmd.add({"unloopmaxzoom"}, {
 	fn = function()
 		NnBind.disconnect("loopmaxzoom")
+		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Loop stopped.")
 	end,
 })
 
 Cmd.add({"selfkick", "sk"}, {
 	fn = function()
+		notify("geist:external", 3, "SelfKick", "Kicking yourself...")
 		LocalPlayer:Kick("You have been banned.\n\nReason: Exploiting\n\nAppeal at: www.roblox.com/appeal")
 	end,
 })
@@ -2634,6 +2792,7 @@ Cmd.add({"esp", "espplayers", "playeresp"}, {
 					func.esp.apply(target, espOpts.color, espOpts)
 				end
 			end
+			notify("solar:eye-bold", 3, "ESP", "ESP applied.")
 		else
 			notify("lucide:user-x", 4, "ESP", "Player not found.")
 		end
@@ -2645,7 +2804,10 @@ Cmd.add({"espall", "allesp", "espallplayers"}, {
 })
 
 Cmd.add({"unesp"}, {
-	fn = func.esp.clearAll,
+	fn = function()
+		func.esp.clearAll()
+		notify("solar:eye-closed-bold", 3, "ESP", "ESP removed.")
+	end,
 })
 
 Cmd.add({"instantproximityprompt", "instantpp", "ipp"}, {
@@ -2655,6 +2817,7 @@ Cmd.add({"instantproximityprompt", "instantpp", "ipp"}, {
 Cmd.add({"uninstantproximityprompt", "uninstantpp", "unipp"}, {
 	fn = function()
 		NnBind.disconnect("ipp_added")
+		notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts disabled.")
 	end,
 })
 
@@ -2704,8 +2867,8 @@ Cmd.add({"walkfling", "wf"}, {
 			end
 		end
 
-		if LocalPlayer.Character then
-			cacheParts(LocalPlayer.Character)
+		if playerChar then
+			cacheParts(playerChar)
 		end
 
 		NnBind.reconnect("walkfling_charAdded", CharacterAdded:Connect(function(char)
@@ -2723,6 +2886,7 @@ Cmd.add({"walkfling", "wf"}, {
 				end)
 			end
 		end))
+		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling enabled.")
 	end,
 })
 
@@ -2730,19 +2894,7 @@ Cmd.add({"unwalkfling", "unwf"}, {
 	fn = function()
 		NnBind.disconnect("walkfling_heartbeat")
 		NnBind.disconnect("walkfling_charAdded")
-	end,
-})
-
-Cmd.add({"unwalkfling", "unwf"}, {
-	fn = function()
-		NnBind.disconnect("walkfling_heartbeat")
-		NnBind.disconnect("walkfling_charAdded")
-	end,
-})
-
-Cmd.add({"unwalkfling", "unwf"}, {
-	fn = function()
-		NnBind.disconnect("walkfling_heartbeat")
+		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling disabled.")
 	end,
 })
 
@@ -2750,7 +2902,7 @@ Cmd.add({"Reach"}, {
 	args = "Size",
 	fn = function(size)
 		size = tonumber(size) or 12
-		local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+		local tool = playerChar and playerChar:FindFirstChildOfClass("Tool")
 		if not tool or not tool:FindFirstChild("Handle") then
 			notify("lucide:triangle-alert", 4, "Reach", "No tool equipped.")
 			return
@@ -2768,13 +2920,13 @@ Cmd.add({"Reach"}, {
 		end
 		handle.Massless = true
 		handle.Size = Vector3.new(size, size, size)
+		notify("geist:arrow-circle-up", 3, "Reach", "Reach set to " .. tostring(size))
 	end,
 })
 
 Cmd.add({"Unreach"}, {
 	fn = function()
-		local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-			or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+		local tool = playerChar and playerChar:FindFirstChildOfClass("Tool") or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
 		if not tool or not tool:FindFirstChild("Handle") then return end
 		local handle = tool.Handle
 		if tool:FindFirstChild("OGSize3") then
@@ -2784,6 +2936,7 @@ Cmd.add({"Unreach"}, {
 			handle.FunTIMES:Destroy()
 		end
 		handle.Massless = false
+		notify("geist:arrow-circle-up", 3, "Reach", "Reach removed.")
 	end,
 })
 
@@ -2810,6 +2963,7 @@ Cmd.add({"fov"}, {
 		value = tonumber(value)
 		if not value then return end
 		Camera.FieldOfView = value
+		notify("craft:camera-lens-snap-01-stroke", 3, "FOV", "Set to " .. tostring(value))
 	end,
 })
 
@@ -2819,8 +2973,7 @@ Cmd.add({"teleport", "tp", "goto"}, {
 		local args = {...}
 		if #args == 0 then return end
 
-		local char = LocalPlayer.Character
-		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		local hrp = playerHRP
 		if not hrp then
 			notify("lucide:triangle-alert", 4, "Teleport", "Character not found.")
 			return
@@ -2839,6 +2992,7 @@ Cmd.add({"teleport", "tp", "goto"}, {
 				return
 			end
 			hrp.CFrame = CFrame.new(nums[1], nums[2], nums[3])
+			notify("craft:gps-01-stroke", 3, "Teleport", string.format("Teleported to %.1f, %.1f, %.1f", nums[1], nums[2], nums[3]))
 		else
 			local targets = {prefixMatch(args[1])}
 			if #targets == 0 then
@@ -2851,6 +3005,7 @@ Cmd.add({"teleport", "tp", "goto"}, {
 				return
 			end
 			hrp.CFrame = targetHRP.CFrame + Vector3.new(0, 3, 0)
+			notify("craft:gps-01-stroke", 3, "Teleport", "Teleported to " .. targets[1].Name .. ".")
 		end
 	end,
 })
@@ -2859,8 +3014,7 @@ Cmd.add({"infinitejump", "infjump"}, {
 	fn = function()
 		local lastJump = 0
 		NnBind.reconnect("ij_jumped", UserInputService.JumpRequest:Connect(function()
-			local char = LocalPlayer.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local hum = playerHum
 			if not hum then
 				notify("lucide:triangle-alert", 3, "Infinite Jump", "No character found.")
 				return
@@ -2870,12 +3024,14 @@ Cmd.add({"infinitejump", "infjump"}, {
 			lastJump = now
 			hum:ChangeState(Enum.HumanoidStateType.Jumping)
 		end))
+		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Enabled.")
 	end,
 })
 
 Cmd.add({"uninfinitejump", "uninfjump"}, {
 	fn = function()
 		NnBind.disconnect("ij_jumped")
+		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Disabled.")
 	end,
 })
 
@@ -2891,13 +3047,7 @@ Cmd.add({"serverhop", "shop"}, {
 	fn = function()
 		notify("lucide:server", 3, "Serverhop", "Finding server...")
 		local ok, res = pcall(function()
-			return HttpService:JSONDecode(
-				game:HttpGet(
-					"https://games.roblox.com/v1/games/"
-					.. game.PlaceId
-					.. "/servers/Public?sortOrder=Asc&limit=100"
-				)
-			)
+			return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
 		end)
 		if not ok or not res or not res.data then
 			notify("lucide:triangle-alert", 4, "Serverhop", "Failed to fetch server list.")
@@ -2905,13 +3055,54 @@ Cmd.add({"serverhop", "shop"}, {
 		end
 		for _, server in ipairs(res.data) do
 			if server.id ~= game.JobId and server.playing < server.maxPlayers then
-				TeleportService:TeleportToPlaceInstance(
-					game.PlaceId, server.id, LocalPlayer
-				)
+				TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
 				return
 			end
 		end
 		notify("lucide:triangle-alert", 4, "Serverhop", "No available server found.")
+	end,
+})
+
+Cmd.add({"smallserverhop", "sshop"}, {
+	fn = function()
+		notify("lucide:server", 3, "SmallServerHop", "Finding small server...")
+
+		local best = nil
+		local cursor = ""
+		local pages = 0
+		local maxPages = 2
+
+		repeat
+			local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+			if cursor ~= "" then
+				url = url .. "&cursor=" .. cursor
+			end
+
+			local ok, res = pcall(function()
+				return HttpService:JSONDecode(game:HttpGet(url))
+			end)
+
+			if not ok or not res or not res.data then
+				break
+			end
+
+			for _, server in ipairs(res.data) do
+				if server.id ~= game.JobId and server.playing < server.maxPlayers then
+					if not best or server.playing < best.playing then
+						best = server
+					end
+				end
+			end
+
+			cursor = res.nextPageCursor or ""
+			pages += 1
+		until cursor == "" or pages >= maxPages
+
+		if best then
+			TeleportService:TeleportToPlaceInstance(game.PlaceId, best.id, LocalPlayer)
+		else
+			notify("lucide:triangle-alert", 4, "SmallServerHop", "No small server found.")
+		end
 	end,
 })
 
@@ -2930,39 +3121,40 @@ Cmd.add({"autoclicker", "autoclick"}, {
 Cmd.add({"admin"}, {
 	fn = function()
 		NnBind.reconnect("admin_chat", LocalPlayer.Chatted:Connect(function(msg)
-			if msg:sub(1, 1) ~= cmdPrefix then return end
+			if msg:sub(1, 1) ~= rare.cmdPrefix then return end
 			runCommand(msg:sub(2))
 		end))
+		notify("geist:code-bracket", 3, "Admin", "Chat commands enabled.")
 	end,
 })
 
 Cmd.add({"unadmin"}, {
 	fn = function()
 		NnBind.disconnect("admin_chat")
+		notify("geist:code-bracket", 3, "Admin", "Chat commands disabled.")
 	end,
 })
 
-do
-	local old
-	Cmd.add({"antikick"}, {
-		fn = function()
-			if old then return end
-			old = safehook(game, "__namecall", function(self, ...)
-				if getnamecallmethod() == "Kick" and self == LocalPlayer then
-					task.wait(9e9)
-				end
-				return old(self, ...)
-			end, true)
-		end,
-	})
-	Cmd.add({"unantikick"}, {
-		fn = function()
-			if not old then return end
-			safeunhook(game, "__namecall", old)
-			old = nil
-		end,
-	})
-end
+Cmd.add({"antikick"}, {
+	fn = function()
+		if rare.antikick_orig then return end
+		rare.antikick_orig = safehook(game, "__namecall", function(self, ...)
+			if getnamecallmethod() == "Kick" and self == LocalPlayer then
+				task.wait(9e9)
+			end
+			return rare.antikick_orig(self, ...)
+		end, true)
+		notify("sfsymbols:checkmarkShieldFill", 3, "AntiKick", "Anti-kick enabled.")
+	end,
+})
+Cmd.add({"unantikick"}, {
+	fn = function()
+		if not rare.antikick_orig then return end
+		safeunhook(game, "__namecall", rare.antikick_orig)
+		rare.antikick_orig = nil
+		notify("sfsymbols:xmarkShieldFill", 3, "AntiKick", "Anti-kick disabled.")
+	end,
+})
 
 Cmd.add({"godmode", "god"}, {
 	fn = function(mode)
@@ -3003,24 +3195,24 @@ Cmd.add({"ungodMode", "ungod"}, {
 		NnBind.disconnect("gm_stateChanged")
 		NnBind.disconnect("gm_charAdded")
 
-		godmode.mode = nil
+		rare.god_mode = nil
 
-		if godmode.origNI then
-			safeunhook(game, "__newindex", godmode.origNI)
-			godmode.origNI = nil
+		if rare.god_origNI then
+			safeunhook(game, "__newindex", rare.god_origNI)
+			rare.god_origNI = nil
 		end
-		if godmode.origNC then
-			safeunhook(game, "__namecall", godmode.origNC)
-			godmode.origNC = nil
+		if rare.god_origNC then
+			safeunhook(game, "__namecall", rare.god_origNC)
+			rare.god_origNC = nil
 		end
-		godmode.humanoid = nil
+		rare.god_hum = nil
 
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local hum = playerHum
 		if hum then
 			hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
 			hum.BreakJointsOnDeath = true
 		end
+		notify("sfsymbols:heartSlashFill", 3, "GodMode", "Disabled.")
 	end,
 })
 
@@ -3031,40 +3223,42 @@ Cmd.add({"tptool", "clicktp"}, {
         tool.ToolTip = "Click/Tap to teleport"
         tool.RequiresHandle = false
         tool.Activated:Connect(function()
-            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local hrp = playerHRP
             if hrp then hrp.CFrame = mouse.Hit end
         end)
         tool.Parent = LocalPlayer.Backpack
+        notify("sfsymbols:handPointUpLeftFill", 3, "TpTool", "Click-TP tool added to backpack.")
     end,
 })
 
 Cmd.add({"untptool", "unclicktp"}, {
     fn = function()
-        local tool = LocalPlayer.Backpack:FindFirstChild("tptool")
-            or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("tptool"))
-        if tool then tool:Destroy() end
+        local tool = LocalPlayer.Backpack:FindFirstChild("tptool") or (playerChar and playerChar:FindFirstChild("tptool"))
+        if tool then
+            tool:Destroy()
+            notify("sfsymbols:handPointUpLeftFill", 3, "TpTool", "Click-TP tool removed.")
+        end
     end,
 })
 
 Cmd.add({"spin"}, {
 	args = "speed",
 	fn = function(speed)
-		speed = tonumber(speed) or 3
-		local char = LocalPlayer.Character
-		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		speed = tonumber(speed) or 50
+		local hrp = playerHRP
+		local hum = playerHum
 		if hum then hum.AutoRotate = false end
 
 		local function applySpin(newHrp)
-			local existing = newHrp:FindFirstChild("NnSpinBAV")
-			if existing then existing:Destroy() end
-			local bav = NewInstance("BodyAngularVelocity")
-			bav.MaxTorque = Vector3.new(0, math.huge, 0)
-			bav.AngularVelocity = Vector3.new(0, math.rad(360) * speed, 0)
-			bav.Parent = newHrp
+			if rare.spinBav then rare.spinBav:Destroy() end
+			rare.spinBav = NewInstance("BodyAngularVelocity")
+			rare.spinBav.MaxTorque = Vector3.new(0, math.huge, 0)
+			rare.spinBav.AngularVelocity = Vector3.new(0, speed, 0)
+			rare.spinBav.Parent = newHrp
 		end
 
 		applySpin(hrp)
+		notify("sfsymbols:rotateRightFill", 3, "Spin", "Spin enabled.")
 
 		NnBind.reconnect("spin_charAdded", CharacterAdded:Connect(function(newChar)
 			local newHrp = newChar:WaitForChild("HumanoidRootPart")
@@ -3078,14 +3272,12 @@ Cmd.add({"spin"}, {
 Cmd.add({"unspin"}, {
 	fn = function()
 		NnBind.disconnect("spin_charAdded")
-		local char = LocalPlayer.Character
-		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		if hrp then
-			local bav = hrp:FindFirstChild("NnSpinBAV")
-			if bav then bav:Destroy() end
-		end
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if rare.spinBav then
+     rare.spinBav:Destroy()
+     rare.spinBav = nil end
+		local hum = playerHum
 		if hum then hum.AutoRotate = true end
+		notify("sfsymbols:rotateLeftFill", 3, "Spin", "Spin disabled.")
 	end,
 })
 
@@ -3122,6 +3314,7 @@ Cmd.add({"antiafk", "aafk"}, {
 Cmd.add({"unantiafk", "unaafk"}, {
 	fn = function()
 		func.feat.antiAfk(nil)
+		notify("geist:cursor-click", 3, "Anti-AFK", "Disabled.")
 	end,
 })
 
@@ -3156,9 +3349,9 @@ Cmd.add({"aimlock"}, {
 		}, function(targetPartName)
 			if not targetPartName then return end
 
-			if aimlockGui then
-				aimlockGui:Destroy()
-				aimlockGui = nil
+			if rare.aimlockGui then
+				rare.aimlockGui:Destroy()
+				rare.aimlockGui = nil
 			end
 
 			local lockedTarget = nil
@@ -3203,6 +3396,7 @@ Cmd.add({"aimlock"}, {
 			end))
 
 			Camera.CameraType = Enum.CameraType.Track
+			notify("sfsymbols:target", 3, "Aimlock", "Aimlock enabled (" .. targetPartName .. ").")
 
 			NnBind.reconnect("aimlock_camtype", Camera:GetPropertyChangedSignal("CameraType"):Connect(function()
 				local ct = Camera.CameraType
@@ -3211,15 +3405,11 @@ Cmd.add({"aimlock"}, {
 				end
 			end))
 
-			local guiParent = pcall(gethui) and gethui()
-				or pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui")
-				or LocalPlayer:WaitForChild("PlayerGui")
-
-			aimlockGui = NewInstance("ScreenGui")
-			aimlockGui.ResetOnSpawn = false
-			aimlockGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-			aimlockGui.IgnoreGuiInset = true
-			aimlockGui.Parent = guiParent
+			rare.aimlockGui = NewInstance("ScreenGui")
+			rare.aimlockGui.ResetOnSpawn = false
+			rare.aimlockGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+			rare.aimlockGui.IgnoreGuiInset = true
+			rare.aimlockGui.Parent = getGuiParent()
 
 			local circle = NewInstance("Frame")
 			circle.BackgroundTransparency = 1
@@ -3227,7 +3417,7 @@ Cmd.add({"aimlock"}, {
 			circle.Size = UDim2.fromOffset(fovRadius * 2, fovRadius * 2)
 			circle.AnchorPoint = Vector2.new(0.5, 0.5)
 			circle.Position = UDim2.fromScale(0.5, 0.5)
-			circle.Parent = aimlockGui
+			circle.Parent = rare.aimlockGui
 
 			local corner = NewInstance("UICorner")
 			corner.CornerRadius = UDim.new(1, 0)
@@ -3259,10 +3449,7 @@ Cmd.add({"aimlock"}, {
 							if screenDist > fovRadius then
 								lockedTarget = nil
 							else
-								local obscuring = Camera:GetPartsObscuringTarget(
-									{aimPart.Position},
-									{LocalPlayer.Character, char}
-								)
+								local obscuring = Camera:GetPartsObscuringTarget({aimPart.Position}, {playerChar, char})
 								if #obscuring > 0 then
 									lockedTarget = nil
 								end
@@ -3290,10 +3477,7 @@ Cmd.add({"aimlock"}, {
 						local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
 						if screenDist > fovRadius then continue end
 
-						local obscuring = Camera:GetPartsObscuringTarget(
-							{aimPart.Position},
-							{LocalPlayer.Character, char}
-						)
+						local obscuring = Camera:GetPartsObscuringTarget({aimPart.Position}, {playerChar, char})
 						if #obscuring > 0 then continue end
 
 						if screenDist < bestDist then
@@ -3306,10 +3490,7 @@ Cmd.add({"aimlock"}, {
 				if lockedTarget then
 					local aimPart = getAimPart(lockedTarget)
 					if aimPart then
-						Camera.CFrame = CFrame.lookAt(
-							Camera.CFrame.Position,
-							predictPosition(aimPart)
-						)
+						Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, predictPosition(aimPart))
 					end
 				end
 			end))
@@ -3326,10 +3507,176 @@ Cmd.add({"unaimlock"}, {
 		for player in pairs(cachedPlayers) do
 			NnBind.disconnect("aimlock_charadded_" .. player.UserId)
 		end
-		if aimlockGui then
-			aimlockGui:Destroy()
-			aimlockGui = nil
+		if rare.aimlockGui then
+			rare.aimlockGui:Destroy()
+			rare.aimlockGui = nil
 		end
+		notify("sfsymbols:target", 3, "Aimlock", "Aimlock disabled.")
+	end,
+})
+
+Cmd.add({"SilentAim", "SA"}, {
+	args = "[near/fov] [radius]",
+	fn = function(modeArg, radiusArg)
+		if rare.saActive then return end
+
+		local isNear = not modeArg or modeArg ~= "fov"
+		local fov = tonumber(radiusArg) or 120
+
+		UI.Picker.show({
+			title = "SILENT AIM",
+			subtitle = "Select target part",
+			buttons = {
+				{ label = "HEAD", sub = "Aim at head", accent = Color3.fromRGB(0, 170, 255), value = "Head" },
+				{ label = "HRP", sub = "Aim at HumanoidRootPart", accent = Color3.fromRGB(160, 80, 255), value = "HumanoidRootPart" },
+			},
+		}, function(targetPart)
+			if not targetPart then return end
+
+			local mouse = LocalPlayer:GetMouse()
+			local saTarget = nil
+
+			NnBind.reconnect("sa_candidates", RunService.Heartbeat:Connect(function()
+				local best, bestDist = nil, math.huge
+
+				if isNear then
+					local myRoot = playerHRP
+					if not myRoot then saTarget = nil return end
+
+					for player in pairs(cachedPlayers) do
+						if player == LocalPlayer then continue end
+						local char = player.Character
+						if not char then continue end
+						local hum = char:FindFirstChildOfClass("Humanoid")
+						if not hum or hum.Health <= 0 then continue end
+						local part = char:FindFirstChild(targetPart) or char:FindFirstChild("HumanoidRootPart")
+						if not part then continue end
+						local delta = part.Position - myRoot.Position
+						local dist = delta:Dot(delta)
+						if dist < bestDist then bestDist = dist best = part end
+					end
+				else
+					local mp = UserInputService:GetMouseLocation()
+					local fovR2 = fov * fov
+
+					for player in pairs(cachedPlayers) do
+						if player == LocalPlayer then continue end
+						local char = player.Character
+						if not char then continue end
+						local hum = char:FindFirstChildOfClass("Humanoid")
+						if not hum or hum.Health <= 0 then continue end
+						local part = char:FindFirstChild(targetPart) or char:FindFirstChild("HumanoidRootPart")
+						if not part then continue end
+						local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
+						if not onScreen then continue end
+						local delta = Vector2.new(sp.X, sp.Y) - mp
+						local d2 = delta:Dot(delta)
+						if d2 < fovR2 and d2 < bestDist then bestDist = d2 best = part end
+					end
+				end
+
+				saTarget = best
+			end))
+
+			rare.saHookOriginal = safehook(game, "__index", function(self, key)
+				if self == mouse and rare.saHookOriginal and (key == "Hit" or key == "Target" or key == "UnitRay") then
+					local target = saTarget
+					if target and target.Parent then
+						local pos = predictPosition(target)
+						local dir = pos - Camera.CFrame.Position
+						local mag = dir.Magnitude
+						dir = mag > 1e-3 and dir / mag or Camera.CFrame.LookVector
+						if key == "Target" then return target end
+						if key == "Hit" then return CFrame.new(pos, pos + dir) end
+						if key == "UnitRay" then return Ray.new(Camera.CFrame.Position, dir * 5000) end
+					end
+				end
+				return rare.saHookOriginal(self, key)
+			end, true)
+
+			if not rare.saHookOriginal then
+				notify("lucide:triangle-alert", 4, "SilentAim", "Hook failed — metamethod hooking not supported.")
+				NnBind.disconnect("sa_candidates")
+				return
+			end
+
+			rare.saActive = true
+
+			if not isNear then
+				rare.saGui = NewInstance("ScreenGui")
+            rare.saGui.IgnoreGuiInset = true
+				rare.saGui.ResetOnSpawn = false
+				rare.saGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+				rare.saGui.Parent = getGuiParent()
+
+				local circle = NewInstance("Frame")
+				circle.BackgroundTransparency = 1
+				circle.BorderSizePixel = 0
+				circle.Size = UDim2.fromOffset(fov * 2, fov * 2)
+				circle.AnchorPoint = Vector2.new(0.5, 0.5)
+				circle.Position = UDim2.fromOffset(0, 0)
+				circle.Visible = false
+				circle.Parent = rare.saGui
+				rare.saCircle = circle
+
+				local corner = NewInstance("UICorner")
+				corner.CornerRadius = UDim.new(1, 0)
+				corner.Parent = circle
+
+				local stroke = NewInstance("UIStroke")
+				stroke.Color = Color3.fromRGB(255, 255, 255)
+				stroke.Thickness = 1
+				stroke.Parent = circle
+
+				local holding = false
+
+				NnBind.reconnect("sa_mouse", RunService.RenderStepped:Connect(function()
+					if holding and rare.saCircle then
+						local mp = UserInputService:GetMouseLocation()
+						rare.saCircle.Position = UDim2.fromOffset(mp.X, mp.Y)
+					end
+				end))
+
+				NnBind.reconnect("sa_press", UserInputService.InputBegan:Connect(function(input, gpe)
+					if gpe then return end
+					local t = input.UserInputType
+					if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+						holding = true
+						if rare.saCircle then rare.saCircle.Visible = true end
+					end
+				end))
+
+				NnBind.reconnect("sa_release", UserInputService.InputEnded:Connect(function(input)
+					local t = input.UserInputType
+					if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+						holding = false
+						if rare.saCircle then rare.saCircle.Visible = false end
+					end
+				end))
+			end
+
+			notify("sfsymbols:target", 3, "SilentAim", "Enabled (" .. targetPart .. ", " .. (isNear and "near" or "fov " .. fov) .. ").")
+		end)
+	end,
+})
+
+Cmd.add({"UnSilentAim", "UnSA"}, {
+	fn = function()
+		if rare.saHookOriginal then
+			safeunhook(game, "__index", rare.saHookOriginal)
+			rare.saHookOriginal = nil
+		end
+		if rare.saGui then
+			rare.saGui:Destroy()
+			rare.saGui = nil
+		end
+		rare.saCircle = nil
+		rare.saActive = false
+		NnBind.disconnect("sa_candidates")
+		NnBind.disconnect("sa_mouse")
+		NnBind.disconnect("sa_press")
+		NnBind.disconnect("sa_release")
+		notify("sfsymbols:target", 3, "SilentAim", "Silent aim disabled.")
 	end,
 })
 
@@ -3346,7 +3693,7 @@ Cmd.add({"hitbox", "hb"}, {
 			if player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
-					hitboxOriginals[player.Character] = hrp.Size
+					rare.hitboxOriginals[player.Character] = hrp.Size
 					hrp.Size = hitboxSize
 					hrp.Transparency = transparency
 					hrp.CanCollide = false
@@ -3363,7 +3710,7 @@ Cmd.add({"hitbox", "hb"}, {
 			end
 			NnBind.reconnect("hitbox_charadded_" .. player.UserId, player.CharacterAdded:Connect(function(char)
 				local hrp = char:WaitForChild("HumanoidRootPart")
-				hitboxOriginals[char] = hrp.Size
+				rare.hitboxOriginals[char] = hrp.Size
 				hrp.Size = hitboxSize
 				hrp.Transparency = transparency
 				hrp.CanCollide = false
@@ -3383,7 +3730,7 @@ Cmd.add({"hitbox", "hb"}, {
 			if player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
-					hitboxOriginals[player.Character] = hrp.Size
+					rare.hitboxOriginals[player.Character] = hrp.Size
 					hrp.Size = hitboxSize
 					hrp.Transparency = transparency
 					hrp.CanCollide = false
@@ -3400,7 +3747,7 @@ Cmd.add({"hitbox", "hb"}, {
 			end
 			NnBind.reconnect("hitbox_charadded_" .. player.UserId, player.CharacterAdded:Connect(function(char)
 				local hrp = char:WaitForChild("HumanoidRootPart")
-				hitboxOriginals[char] = hrp.Size
+				rare.hitboxOriginals[char] = hrp.Size
 				hrp.Size = hitboxSize
 				hrp.Transparency = transparency
 				hrp.CanCollide = false
@@ -3427,6 +3774,8 @@ Cmd.add({"hitbox", "hb"}, {
 				end
 			end
 		end))
+
+		notify("lucide:box", 3, "Hitbox", "Hitbox set to " .. tostring(size) .. ".")
 	end,
 })
 
@@ -3442,23 +3791,23 @@ Cmd.add({"unhitbox", "unhb"}, {
 					NnBind.disconnect("hitbox_sizechanged_" .. tostring(hrp))
 					NnBind.disconnect("hitbox_transchanged_" .. tostring(hrp))
 					NnBind.disconnect("hitbox_cancollidechanged_" .. tostring(hrp))
-					if hitboxOriginals[player.Character] then
-						hrp.Size = hitboxOriginals[player.Character]
+					if rare.hitboxOriginals[player.Character] then
+						hrp.Size = rare.hitboxOriginals[player.Character]
 					end
 					hrp.Transparency = 1
 					hrp.CanCollide = false
 				end
 			end
 		end
-		table.clear(hitboxOriginals)
+		table.clear(rare.hitboxOriginals)
+		notify("lucide:boxes", 3, "Hitbox", "Hitbox removed.")
 	end,
 })
 
 Cmd.add({"cbring", "clientbring", "clientb"}, {
 	args = "playername / all",
 	fn = function(...)
-		local myChar = LocalPlayer.Character
-		local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+		local myHrp = playerHRP
 		if not myHrp then return end
 
 		local names = {...}
@@ -3478,6 +3827,7 @@ Cmd.add({"cbring", "clientbring", "clientb"}, {
 				hrp.CFrame = myHrp.CFrame * CFrame.new(0, 0, -5)
 			end
 		end
+		notify("sfsymbols:person2Fill", 3, "CBring", "Brought players to you.")
 	end,
 })
 
@@ -3496,8 +3846,7 @@ Cmd.add({"loopcbring", "loopclientb", "loppclientb", "loopclientbring", "lcbring
 		end
 
 		NnBind.reconnect("loopcbring_heartbeat", RunService.Heartbeat:Connect(function()
-			local myChar = LocalPlayer.Character
-			local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			local myHrp = playerHRP
 			if not myHrp then return end
 
 			for player in pairs(loopBringTargets) do
@@ -3508,6 +3857,7 @@ Cmd.add({"loopcbring", "loopclientb", "loppclientb", "loopclientbring", "lcbring
 				end
 			end
 		end))
+		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring enabled.")
 	end,
 })
 
@@ -3526,74 +3876,283 @@ Cmd.add({"unloopcbring", "unloopclientb", "unloopcientb", "unlcbring", "unlclien
 				NnBind.disconnect("loopcbring_heartbeat")
 			end
 		end
+		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring disabled.")
+	end,
+})
+
+Cmd.add({"fpsbooster", "lowgraphics", "boostfps", "lowg", "antilag"}, {
+	fn = function()
+		if fpsbooster then return end
+		fpsbooster = true
+
+		if execapi.setfpscap then execapi.setfpscap(0) end
+
+		local terrain = workspace.Terrain
+		local rs = settings().Rendering
+		local TargetQuality = Enum.QualityLevel.Level01
+
+		rs.QualityLevel = TargetQuality
+		rs.EagerBulkExecution = true
+		rs.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+
+		Lighting.GlobalShadows = false
+		Lighting.FogEnd = 9e9
+		Lighting.FogStart = 9e9
+		Lighting.EnvironmentDiffuseScale = 0
+		Lighting.EnvironmentSpecularScale = 0
+		Lighting.Technology = Enum.Technology.Compatibility
+
+		workspace.GlobalWind = Vector3.zero
+		workspace.LevelOfDetail = Enum.ModelLevelOfDetail.Disabled
+		workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
+
+		if execapi.sethiddenproperty then
+			pcall(execapi.sethiddenproperty, workspace, "StreamingEnabled", true)
+			pcall(execapi.sethiddenproperty, terrain, "Decoration", false)
+		end
+
+		terrain.WaterReflectance = 0
+		terrain.WaterWaveSize = 0
+		terrain.WaterWaveSpeed = 0
+
+		for _, obj in ipairs(Lighting:GetChildren()) do
+			obj:Destroy()
+		end
+
+		NnBind.reconnect("fpsboost_lightingchildadded", Lighting.ChildAdded:Connect(function(obj)
+			obj:Destroy()
+		end))
+
+		NnBind.reconnect("fpsboost_QualityLevel", rs:GetPropertyChangedSignal("QualityLevel"):Connect(function() setProp(rs, "QualityLevel", TargetQuality) end))
+		NnBind.reconnect("fpsboost_EagerBulkExecution", rs:GetPropertyChangedSignal("EagerBulkExecution"):Connect(function() setProp(rs, "EagerBulkExecution", true) end))
+		NnBind.reconnect("fpsboost_MeshPartDetailLevel", rs:GetPropertyChangedSignal("MeshPartDetailLevel"):Connect(function() setProp(rs, "MeshPartDetailLevel", Enum.MeshPartDetailLevel.Level01) end))
+		NnBind.reconnect("fpsboost_GlobalShadows", Lighting:GetPropertyChangedSignal("GlobalShadows"):Connect(function() setProp(Lighting, "GlobalShadows", false) end))
+		NnBind.reconnect("fpsboost_FogEnd", Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function() setProp(Lighting, "FogEnd", 9e9) end))
+		NnBind.reconnect("fpsboost_FogStart", Lighting:GetPropertyChangedSignal("FogStart"):Connect(function() setProp(Lighting, "FogStart", 9e9) end))
+		NnBind.reconnect("fpsboost_EnvironmentDiffuseScale", Lighting:GetPropertyChangedSignal("EnvironmentDiffuseScale"):Connect(function() setProp(Lighting, "EnvironmentDiffuseScale", 0) end))
+		NnBind.reconnect("fpsboost_EnvironmentSpecularScale", Lighting:GetPropertyChangedSignal("EnvironmentSpecularScale"):Connect(function() setProp(Lighting, "EnvironmentSpecularScale", 0) end))
+		NnBind.reconnect("fpsboost_Technology", Lighting:GetPropertyChangedSignal("Technology"):Connect(function() setProp(Lighting, "Technology", Enum.Technology.Compatibility) end))
+		NnBind.reconnect("fpsboost_WaterReflectance", terrain:GetPropertyChangedSignal("WaterReflectance"):Connect(function() setProp(terrain, "WaterReflectance", 0) end))
+		NnBind.reconnect("fpsboost_WaterWaveSize", terrain:GetPropertyChangedSignal("WaterWaveSize"):Connect(function() setProp(terrain, "WaterWaveSize", 0) end))
+		NnBind.reconnect("fpsboost_WaterWaveSpeed", terrain:GetPropertyChangedSignal("WaterWaveSpeed"):Connect(function() setProp(terrain, "WaterWaveSpeed", 0) end))
+		NnBind.reconnect("fpsboost_GlobalWind", workspace:GetPropertyChangedSignal("GlobalWind"):Connect(function() setProp(workspace, "GlobalWind", Vector3.zero) end))
+		NnBind.reconnect("fpsboost_LevelOfDetail", workspace:GetPropertyChangedSignal("LevelOfDetail"):Connect(function() setProp(workspace, "LevelOfDetail", Enum.ModelLevelOfDetail.Disabled) end))
+		NnBind.reconnect("fpsboost_InterpolationThrottling", workspace:GetPropertyChangedSignal("InterpolationThrottling"):Connect(function() setProp(workspace, "InterpolationThrottling", Enum.InterpolationThrottlingMode.Enabled) end))
+
+		local SmoothPlastic = Enum.Material.SmoothPlastic
+		local optimized = setmetatable({}, {__mode = "k"})
+
+		local function optimize(obj)
+			if optimized[obj] then return end
+			optimized[obj] = true
+			local class = obj.ClassName
+			if class == "ParticleEmitter" then
+				obj.Rate = 0
+				obj.Enabled = false
+			elseif class == "Trail" or class == "Beam" or class == "Fire" or class == "Smoke" or class == "Sparkles" then
+				obj.Enabled = false
+			elseif class == "PointLight" or class == "SpotLight" or class == "SurfaceLight" then
+				obj.Enabled = false
+			elseif class == "Decal" then
+				obj.Transparency = 1
+			elseif class == "Texture" then
+				obj.Transparency = 1
+				obj.StudsPerTileU = 512
+				obj.StudsPerTileV = 512
+			elseif class == "SurfaceAppearance" then
+				obj:Destroy()
+			elseif obj:IsA("BasePart") then
+				obj.Material = SmoothPlastic
+				obj.Reflectance = 0
+			end
+		end
+
+		for _, obj in ipairs(workspace:GetDescendants()) do
+			optimize(obj)
+		end
+
+		NnBind.reconnect("fpsboost_descendantadded", workspace.DescendantAdded:Connect(optimize))
+
+		notify("lucide:zap", 4, "FPS Booster", "Low graphics applied. Rejoin to restore.")
+	end,
+})
+
+Cmd.add({"fullbright", "fulfb", "fb"}, {
+	fn = function()
+		Lighting.GlobalShadows = false
+		Lighting.ClockTime = 12
+		Lighting.Brightness = 2
+		Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+
+		notify("lucide:sun", 3, "Fullbright", "Fullbright applied.")
+	end,
+})
+
+Cmd.add({"loopfullbright", "loopfb", "lfb"}, {
+	fn = function()
+		Lighting.GlobalShadows = false
+		Lighting.ClockTime = 12
+		Lighting.Brightness = 2
+		Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+
+		NnBind.reconnect("loopfb_GlobalShadows", Lighting:GetPropertyChangedSignal("GlobalShadows"):Connect(function() setProp(Lighting, "GlobalShadows", false) end))
+		NnBind.reconnect("loopfb_ClockTime", Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function() setProp(Lighting, "ClockTime", 12) end))
+		NnBind.reconnect("loopfb_Brightness", Lighting:GetPropertyChangedSignal("Brightness"):Connect(function() setProp(Lighting, "Brightness", 2) end))
+		NnBind.reconnect("loopfb_Ambient", Lighting:GetPropertyChangedSignal("Ambient"):Connect(function() setProp(Lighting, "Ambient", Color3.fromRGB(128, 128, 128)) end))
+
+		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright enabled.")
+	end,
+})
+
+Cmd.add({"unloopfullbright", "unloopfb", "unlfb"}, {
+	fn = function()
+		NnBind.disconnect("loopfb_GlobalShadows")
+		NnBind.disconnect("loopfb_ClockTime")
+		NnBind.disconnect("loopfb_Brightness")
+		NnBind.disconnect("loopfb_Ambient")
+
+		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright disabled.")
+	end,
+})
+
+Cmd.add({"adonisbypass", "bypassadonis", "badonis", "adonisb"}, {
+	fn = function() -- skidded from nameless admin lol
+		task.spawn(function()
+			local getgc = execapi.getgc
+			local hookfunction = execapi.hookfunction
+			local newcclosure = execapi.newcclosure or function(f) return f end
+			local getrenv = execapi.getrenv
+			local debugInfo = getrenv and getrenv().debug and getrenv().debug.info
+
+			if not (getgc and hookfunction and getrenv and debugInfo) then
+				notify("lucide:shield-off", 3, "Adonis Bypass", "Required exploit functions not available.")
+				return
+			end
+
+			local DetectedMeth, KillMeth
+			local AdonisFound = false
+
+			for _, value in getgc(true) do
+				if typeof(value) == "table" then
+					local hasDetected = typeof(rawget(value, "Detected")) == "function"
+					local hasKill = typeof(rawget(value, "Kill")) == "function"
+					local hasVars = rawget(value, "Variables") ~= nil
+					local hasProcess = rawget(value, "Process") ~= nil
+
+					if hasDetected or (hasKill and hasVars and hasProcess) then
+						AdonisFound = true
+						break
+					end
+				end
+			end
+
+			if not AdonisFound then
+				notify("lucide:shield-off", 3, "Adonis Bypass", "Adonis not found in this server.")
+				return
+			end
+
+			for _, value in getgc(true) do
+				if typeof(value) == "table" then
+					local detected = rawget(value, "Detected")
+					local kill = rawget(value, "Kill")
+
+					if typeof(detected) == "function" and not DetectedMeth then
+						DetectedMeth = detected
+						hookfunction(DetectedMeth, function(methodName, methodFunc)
+							return true
+						end)
+						notify("lucide:shield-check", 3, "Adonis Bypass", "Hooked Adonis detection.")
+					end
+
+					if rawget(value, "Variables") and rawget(value, "Process") and typeof(kill) == "function" and not KillMeth then
+						KillMeth = kill
+						hookfunction(KillMeth, function() end)
+						notify("lucide:shield-check", 3, "Adonis Bypass", "Hooked Adonis kill method.")
+					end
+				end
+			end
+
+			if DetectedMeth and debugInfo then
+				local hook
+				hook = hookfunction(debugInfo, newcclosure(function(...)
+					local functionName = ...
+					if functionName == DetectedMeth then
+						return coroutine.yield(coroutine.running())
+					end
+					return hook(...)
+				end))
+			end
+
+			notify("lucide:shield", 4, "Adonis Bypass", "Bypass active.")
+		end)
 	end,
 })
 
 func.init.commandCaches()
 
 UI.onScaleChanged = function(scale)
-	uiScaleValue = scale
+	rare.uiScaleValue = scale
 	func.persist.saveSettings()
 end
 
 func.persist.loadSettings()
-UI.setScale(uiScaleValue)
+UI.setScale(rare.uiScaleValue)
 
 -- General Settings Tab
-local _generalPage = UI.Settings.tab("General")
-UI.Settings.input(_generalPage, "Command Prefix", "e.g. ;", cmdPrefix, function(val)
+rare.generalPage = UI.Settings.tab("General")
+UI.Settings.input(rare.generalPage, "Command Prefix", "e.g. ;", rare.cmdPrefix, function(val)
 	if val ~= "" then
-		cmdPrefix = val:sub(1, 1)
+		rare.cmdPrefix = val:sub(1, 1)
 		func.persist.saveSettings()
 	end
 end)
 
 -- ESP Settings Tab
-local _espPage = UI.Settings.tab("ESP")
-UI.Settings.color(_espPage, "Custom ESP Color", espOpts.color, function(c)
+rare.espPage = UI.Settings.tab("ESP")
+UI.Settings.color(rare.espPage, "Custom ESP Color", espOpts.color, function(c)
 	espOpts.color = c
 	func.persist.saveSettings()
-	if espActive then
+	if rare.espActive then
 		func.esp.clearAll()
 		func.feat.enableESPAll()
 	end
 end)
-UI.Settings.toggle(_espPage, "Use Custom ESP Color", function(v)
+UI.Settings.toggle(rare.espPage, "Use Custom ESP Color", function(v)
 	espOpts.useCustomColor = v
 	func.persist.saveSettings()
-	if espActive then
+	if rare.espActive then
 		func.esp.clearAll()
 		func.feat.enableESPAll()
 	end
 end)
-UI.Settings.toggle(_espPage, "ESP Color By Team", function(v)
+UI.Settings.toggle(rare.espPage, "ESP Color By Team", function(v)
 	espOpts.colorByTeam = v
 	func.persist.saveSettings()
-	if espActive then
+	if rare.espActive then
 		func.esp.clearAll()
 		func.feat.enableESPAll()
 	end
 end)
-UI.Settings.toggle(_espPage, "Distance Label", function(v)
+UI.Settings.toggle(rare.espPage, "Distance Label", function(v)
 	espOpts.distance = v
 	func.persist.saveSettings()
-	if espActive then
+	if rare.espActive then
 		func.esp.clearAll()
 		func.feat.enableESPAll()
 	end
 end)
-UI.Settings.toggle(_espPage, "Health Label", function(v)
+UI.Settings.toggle(rare.espPage, "Health Label", function(v)
 	espOpts.health = v
 	func.persist.saveSettings()
-	if espActive then
+	if rare.espActive then
 		func.esp.clearAll()
 		func.feat.enableESPAll()
 	end
 end)
-UI.Settings.toggle(_espPage, "Chams Only", function(v)
+UI.Settings.toggle(rare.espPage, "Chams Only", function(v)
 	espOpts.chamsonly = v
 	func.persist.saveSettings()
-	if espActive then
+	if rare.espActive then
 		func.esp.clearAll()
 		func.feat.enableESPAll()
 	end
@@ -3644,7 +4203,7 @@ hudSg.Enabled = true
 if NNNotify then
 	NNNotify({
 		Title = "Noname",
-		Text = "Time take to load: " .. string.format("%.2f", os.clock() - _loadStart) .. "s",
+		Text = "Time take to load: " .. string.format("%.2f", os.clock() - rare.loadStart) .. "s",
 		Duration = 4,
 		Icon = "lucide:cpu",
 	})
