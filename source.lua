@@ -10,40 +10,10 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 
 -- only for rarely used variables
 local rare = {
-	nnErr = nil,
-	uiErr = nil,
 	fpdh = workspace.FallenPartsDestroyHeight,
-	aimlockGui = nil,
-	fcPart = nil,
-	saActive = false,
-	saHookOriginal = nil,
-	saGui = nil,
-	saCircle = nil,
 	hitboxOriginals = {},
-	spinBav = nil,
-	loadStart = nil,
-	generalPage = nil,
-	espPage = nil,
-	cmdListFrame = nil,
-	cmdListScroll = nil,
-	cmdListSearch = nil,
-	kbMainFrame = nil,
-	kbManager = nil,
-	btnMainFrame = nil,
-	btnManager = nil,
-	closeCmd = nil,
-	nnSuppressNotify = false,
-	god_mode = nil,
-	god_hum = nil,
-	god_origNI = nil,
-	god_origNC = nil,
-	antiFling = false,
-	antiInvis = false,
 	uiScaleValue = 1,
-	antikick_orig = nil,
-	espActive = false,
 	cmdPrefix = ";",
-	clickingSugg = false,
 }
 
 local cloneref = type(cloneref) == "function" and cloneref or function(x) return x end
@@ -179,6 +149,7 @@ local execapi = {
 	getrenv = type(getrenv) == "function" and getrenv or nil,
 }
 local espOpts = { color = Color3.fromRGB(255, 80, 80), distance = false, health = false, chamsonly = false, colorByTeam = false, useCustomColor = false }
+local ignoreTeamOpts = { silentaim = false, aimlock = false, hitbox = false, fling = false }
 local afkMode = nil
 local playerChar = LocalPlayer.Character
 local playerHum = playerChar and playerChar:FindFirstChildOfClass("Humanoid")
@@ -1270,6 +1241,10 @@ func.persist.saveSettings = function()
 		esp_useCustomColor = espOpts.useCustomColor,
 		cmd_prefix = rare.cmdPrefix,
 		ui_scale = rare.uiScaleValue,
+		ignoreteam_silentaim = ignoreTeamOpts.silentaim,
+		ignoreteam_aimlock = ignoreTeamOpts.aimlock,
+		ignoreteam_hitbox = ignoreTeamOpts.hitbox,
+		ignoreteam_fling = ignoreTeamOpts.fling,
 	}))
 end
 
@@ -1289,6 +1264,10 @@ func.persist.loadSettings = function()
 	if type(decoded.esp_useCustomColor) == "boolean" then espOpts.useCustomColor = decoded.esp_useCustomColor end
 	if type(decoded.cmd_prefix) == "string" and decoded.cmd_prefix ~= "" then rare.cmdPrefix = decoded.cmd_prefix end
 	if type(decoded.ui_scale) == "number" then rare.uiScaleValue = decoded.ui_scale end
+	if type(decoded.ignoreteam_silentaim) == "boolean" then ignoreTeamOpts.silentaim = decoded.ignoreteam_silentaim end
+	if type(decoded.ignoreteam_aimlock) == "boolean" then ignoreTeamOpts.aimlock = decoded.ignoreteam_aimlock end
+	if type(decoded.ignoreteam_hitbox) == "boolean" then ignoreTeamOpts.hitbox = decoded.ignoreteam_hitbox end
+	if type(decoded.ignoreteam_fling) == "boolean" then ignoreTeamOpts.fling = decoded.ignoreteam_fling end
 end
 
 func.build.managerGui = UI.buildManagerGui
@@ -2836,7 +2815,9 @@ Cmd.add({"fling"}, {
 		if names[1] == "all" then
 			local targets = {}
 			for p in pairs(cachedPlayers) do
-				if p ~= LocalPlayer then targets[#targets + 1] = p end
+				if p ~= LocalPlayer and not (ignoreTeamOpts.fling and LocalPlayer.Team and p.Team == LocalPlayer.Team) then
+					targets[#targets + 1] = p
+				end
 			end
 			func.feat.fling(table.unpack(targets))
 			return
@@ -3464,6 +3445,7 @@ Cmd.add({"aimlock"}, {
 					for player, char in pairs(charCache) do
 						local hum = char:FindFirstChildOfClass("Humanoid")
 						if not hum or hum.Health <= 0 then continue end
+						if ignoreTeamOpts.aimlock and LocalPlayer.Team and player.Team == LocalPlayer.Team then continue end
 
 						local hrp = char:FindFirstChild("HumanoidRootPart")
 						if not hrp then continue end
@@ -3545,6 +3527,7 @@ Cmd.add({"SilentAim", "SA"}, {
 
 					for player in pairs(cachedPlayers) do
 						if player == LocalPlayer then continue end
+						if ignoreTeamOpts.silentaim and LocalPlayer.Team and player.Team == LocalPlayer.Team then continue end
 						local char = player.Character
 						if not char then continue end
 						local hum = char:FindFirstChildOfClass("Humanoid")
@@ -3561,6 +3544,7 @@ Cmd.add({"SilentAim", "SA"}, {
 
 					for player in pairs(cachedPlayers) do
 						if player == LocalPlayer then continue end
+						if ignoreTeamOpts.silentaim and LocalPlayer.Team and player.Team == LocalPlayer.Team then continue end
 						local char = player.Character
 						if not char then continue end
 						local hum = char:FindFirstChildOfClass("Humanoid")
@@ -3690,6 +3674,7 @@ Cmd.add({"hitbox", "hb"}, {
 
 		for player in pairs(cachedPlayers) do
 			if player == LocalPlayer then continue end
+			if ignoreTeamOpts.hitbox and LocalPlayer.Team and player.Team == LocalPlayer.Team then continue end
 			if player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
@@ -3709,6 +3694,7 @@ Cmd.add({"hitbox", "hb"}, {
 				end
 			end
 			NnBind.reconnect("hitbox_charadded_" .. player.UserId, player.CharacterAdded:Connect(function(char)
+				if ignoreTeamOpts.hitbox and LocalPlayer.Team and player.Team == LocalPlayer.Team then return end
 				local hrp = char:WaitForChild("HumanoidRootPart")
 				rare.hitboxOriginals[char] = hrp.Size
 				hrp.Size = hitboxSize
@@ -3727,6 +3713,7 @@ Cmd.add({"hitbox", "hb"}, {
 		end
 
 		NnBind.reconnect("hitbox_playeradded", PlayerAdded:Connect(function(player)
+			if ignoreTeamOpts.hitbox and LocalPlayer.Team and player.Team == LocalPlayer.Team then return end
 			if player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
@@ -4015,6 +4002,113 @@ Cmd.add({"unloopfullbright", "unloopfb", "unlfb"}, {
 	end,
 })
 
+Cmd.add({"nofog", "nf"}, {
+	fn = function()
+		Lighting.FogEnd = 9e9
+		Lighting.FogStart = 9e9
+		for _, obj in ipairs(Lighting:GetChildren()) do
+			if obj:IsA("Atmosphere") then
+				obj.Density = 0
+				obj.Offset = 0
+			end
+		end
+		notify("lucide:cloud-off", 3, "NoFog", "Fog removed.")
+	end,
+})
+
+Cmd.add({"loopnofog", "lnofog", "lnf", "loopnf"}, {
+	fn = function()
+		rare.nofog_fogEnd = Lighting.FogEnd
+		rare.nofog_fogStart = Lighting.FogStart
+
+		local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+		rare.nofog_atmDensity = atm and atm.Density or nil
+		rare.nofog_atmOffset = atm and atm.Offset or nil
+
+		Lighting.FogEnd = 9e9
+		Lighting.FogStart = 9e9
+
+		NnBind.reconnect("loopnofog_FogEnd", Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function() setProp(Lighting, "FogEnd", 9e9) end))
+		NnBind.reconnect("loopnofog_FogStart", Lighting:GetPropertyChangedSignal("FogStart"):Connect(function() setProp(Lighting, "FogStart", 9e9) end))
+
+		if atm then
+			atm.Density = 0
+			atm.Offset = 0
+			NnBind.reconnect("loopnofog_AtmDensity", atm:GetPropertyChangedSignal("Density"):Connect(function() setProp(atm, "Density", 0) end))
+			NnBind.reconnect("loopnofog_AtmOffset", atm:GetPropertyChangedSignal("Offset"):Connect(function() setProp(atm, "Offset", 0) end))
+		end
+
+		notify("lucide:cloud-off", 3, "LoopNoFog", "Loop no fog enabled.")
+	end,
+})
+
+Cmd.add({"unloopnofog", "unlnofog", "unlnf", "unloopnf", "unnf"}, {
+	fn = function()
+		NnBind.disconnect("loopnofog_FogEnd")
+		NnBind.disconnect("loopnofog_FogStart")
+		NnBind.disconnect("loopnofog_AtmDensity")
+		NnBind.disconnect("loopnofog_AtmOffset")
+
+		if rare.nofog_fogEnd ~= nil then Lighting.FogEnd = rare.nofog_fogEnd end
+		if rare.nofog_fogStart ~= nil then Lighting.FogStart = rare.nofog_fogStart end
+
+		local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+		if atm then
+			if rare.nofog_atmDensity ~= nil then atm.Density = rare.nofog_atmDensity end
+			if rare.nofog_atmOffset ~= nil then atm.Offset = rare.nofog_atmOffset end
+		end
+
+		rare.nofog_fogEnd = nil
+		rare.nofog_fogStart = nil
+		rare.nofog_atmDensity = nil
+		rare.nofog_atmOffset = nil
+
+		notify("lucide:cloud-off", 3, "LoopNoFog", "Loop no fog disabled.")
+	end,
+})
+
+Cmd.add({"follow", "stalk", "walk"}, {
+	args = "playername",
+	fn = function(name)
+		if not name then
+			notify("lucide:triangle-alert", 4, "Follow", "No player specified.")
+			return
+		end
+		local target = select(1, prefixMatch(name))
+		if not target then
+			notify("lucide:user-x", 4, "Follow", "Player not found.")
+			return
+		end
+
+		rare.followActive = true
+
+		NnBind.reconnect("follow_render", RunService.RenderStepped:Connect(function()
+			local hum = playerHum
+			local hrp = playerHRP
+			local targetChar = target.Character
+			local targetHRP = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+
+			if not hum or not hrp or not targetHRP then return end
+			if (hrp.Position - targetHRP.Position).Magnitude < 4 then return end
+
+			hum:MoveTo(targetHRP.Position)
+		end))
+
+		notify("lucide:user-check", 3, "Follow", "Following " .. target.Name .. ".")
+	end,
+})
+
+Cmd.add({"unfollow"}, {
+	fn = function()
+		rare.followActive = nil
+		NnBind.disconnect("follow_render")
+		if playerHum and playerHRP then
+			playerHum:MoveTo(playerHRP.Position)
+		end
+		notify("lucide:user-check", 3, "Follow", "Follow stopped.")
+	end,
+})
+
 Cmd.add({"adonisbypass", "bypassadonis", "badonis", "adonisb"}, {
 	fn = function() -- skidded from nameless admin lol
 		task.spawn(function()
@@ -4105,6 +4199,24 @@ UI.Settings.input(rare.generalPage, "Command Prefix", "e.g. ;", rare.cmdPrefix, 
 		rare.cmdPrefix = val:sub(1, 1)
 		func.persist.saveSettings()
 	end
+end)
+
+UI.Settings.section(rare.generalPage, "Ignore Team")
+UI.Settings.toggle(rare.generalPage, "SilentAim Ignore Team", function(v)
+	ignoreTeamOpts.silentaim = v
+	func.persist.saveSettings()
+end)
+UI.Settings.toggle(rare.generalPage, "Aimlock Ignore Team", function(v)
+	ignoreTeamOpts.aimlock = v
+	func.persist.saveSettings()
+end)
+UI.Settings.toggle(rare.generalPage, "Hitbox Ignore Team", function(v)
+	ignoreTeamOpts.hitbox = v
+	func.persist.saveSettings()
+end)
+UI.Settings.toggle(rare.generalPage, "Fling Ignore Team", function(v)
+	ignoreTeamOpts.fling = v
+	func.persist.saveSettings()
 end)
 
 -- ESP Settings Tab
