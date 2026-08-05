@@ -145,8 +145,10 @@ local execapi = {
 	newcclosure = type(newcclosure) == "function" and newcclosure or nil,
 	setstackhidden = type(setstackhidden) == "function" and setstackhidden or nil,
 	checkcaller = type(checkcaller) == "function" and checkcaller or nil,
-	getgc = (type(getgc) == "function" and getgc) or (type(debug) == "table" and type(debug.getgc) == "function" and debug.getgc) or nil,
+	getgc = (type(getgc) == "function" and getgc) or (type(get_gc_objects) == "function" and get_gc_objects) or nil,
 	getrenv = type(getrenv) == "function" and getrenv or nil,
+	setconstant = (type(setconstant) == "function" and setconstant) or (type(debug) == "table" and type(debug.setconstant) == "function" and debug.setconstant) or nil,
+	getconstants = (type(getconstants) == "function" and getconstants) or (type(debug) == "table" and type(debug.getconstants) == "function" and debug.getconstants) or nil,
 }
 local espOpts = { color = Color3.fromRGB(255, 80, 80), distance = false, health = false, chamsonly = false, colorByTeam = false, useCustomColor = false }
 local ignoreTeamOpts = { silentaim = false, aimlock = false, hitbox = false, fling = false }
@@ -157,9 +159,13 @@ local playerHRP = playerChar and playerChar:FindFirstChild("HumanoidRootPart")
 
 -- notify
 rare.nnSuppressNotify = false
+rare.debugNotif = false
+rare.disableNoiseNotif = false
 
-local function notify(icon, duration, title, text, button, button2)
+local function notify(icon, duration, title, text, noise, button, button2)
 	if rare.nnSuppressNotify then return end
+	if not rare.debugNotif then return end
+	if rare.disableNoiseNotif and noise then return end
 	local cfg = {
 		Title = title or "Noname",
 		Text = text or "",
@@ -678,7 +684,7 @@ func.feat.loopwalkspeed = function(Speed)
 end
 
 func.feat.noclip = function()
-	notify("solar:ghost-bold", 3, "Noclip", "Noclip enabled.")
+	notify("solar:ghost-bold", 3, "Noclip", "Noclip enabled.", true)
 	local function hookCharacter(character)
 		table.clear(noclipParts)
 
@@ -715,13 +721,13 @@ end
 func.feat.invisible = function()
 	local char = playerChar
 	if not char then
-		notify("lucide:eye-off", 4, "Invisible", "No character found.")
+		notify("lucide:eye-off", 4, "Invisible", "No character found.", false)
 		return
 	end
 	local hum = playerHum
 	local hrp = playerHRP
 	if not hum or not hrp then
-		notify("lucide:eye-off", 4, "Invisible", "No character found.")
+		notify("lucide:eye-off", 4, "Invisible", "No character found.", false)
 		return
 	end
 
@@ -731,7 +737,7 @@ func.feat.invisible = function()
 		end
 	end
 
-	notify("sfsymbols:eyeSlashFill", 3, "Invisible", "You are now invisible.")
+	notify("sfsymbols:eyeSlashFill", 3, "Invisible", "You are now invisible.", true)
 
 	NnBind.reconnect("invis_transparency", RunService.Stepped:Connect(function()
 		local c = playerChar
@@ -772,7 +778,7 @@ func.feat.fly = function(speed, vfly)
 
 	if flying then return end
 
-	notify("sfsymbols:birdFill", 3, "Fly", "Flying enabled.")
+	notify("sfsymbols:birdFill", 3, "Fly", "Flying enabled.", true)
 
 	local character = playerChar or CharacterAdded:Wait()
 	local humanoidRootPart = playerHRP or character:WaitForChild("HumanoidRootPart")
@@ -822,7 +828,7 @@ end
 
 func.feat.unfly = function()
 	flying = false
-	notify("sfsymbols:birdFill", 3, "Fly", "Flying disabled.")
+	notify("sfsymbols:birdFill", 3, "Fly", "Flying disabled.", true)
 
 	if playerChar then
 		local humanoid = playerHum
@@ -875,7 +881,7 @@ func.feat.startFc = function(speedArg)
 		end
 	end))
 
-	notify("sfsymbols:camera", 3, "Freecam", "Enabled (speed " .. speed .. ").")
+	notify("sfsymbols:camera", 3, "Freecam", "Enabled (speed " .. speed .. ").", true)
 end
 
 func.feat.stopFc = function()
@@ -889,7 +895,7 @@ func.feat.stopFc = function()
 	if playerHum then Camera.CameraSubject = playerHum end
 	local root = playerHRP
 	if root then root.Anchored = false end
-	notify("sfsymbols:camera", 3, "Freecam", "Disabled.")
+	notify("sfsymbols:camera", 3, "Freecam", "Disabled.", true)
 end
 
 func.feat.enableAntiVoid = function()
@@ -958,7 +964,7 @@ func.feat.enableAntiVoid = function()
 
 	initVoidChar(char)
 
-	notify("solar:shield-check-bold", 3, "AntiVoid", "Anti-void enabled.")
+	notify("solar:shield-check-bold", 3, "AntiVoid", "Anti-void enabled.", true)
 end
 
 local function prefixMatch(...)
@@ -989,7 +995,7 @@ end
 func.feat.fling = function(...)
 	local targets = {...}
 	if #targets == 0 then
-		notify("lucide:triangle-alert", 4, "Fling", "No players specified to fling.")
+		notify("lucide:triangle-alert", 4, "Fling", "No players specified to fling.", false)
 		return
 	end
 
@@ -998,7 +1004,7 @@ func.feat.fling = function(...)
 	local RootPart = Humanoid and Humanoid.RootPart
 
 	if not (Character and Humanoid and RootPart) then
-		notify("lucide:user-x", 4, "Fling", "Your character is not ready.")
+		notify("lucide:user-x", 4, "Fling", "Your character is not ready.", false)
 		return
 	end
 
@@ -1054,7 +1060,7 @@ func.feat.fling = function(...)
 
 	for _, playerToFling in ipairs(targets) do
 		if playerToFling == LocalPlayer then
-			notify("lucide:triangle-alert", 4, "Fling", "Skipping self.")
+			notify("lucide:triangle-alert", 4, "Fling", "Skipping self.", false)
 			continue
 		end
 
@@ -1066,11 +1072,11 @@ func.feat.fling = function(...)
 		local Handle = Accessory and Accessory:FindFirstChild("Handle")
 
 		if THumanoid and THumanoid.Sit then
-			notify("lucide:triangle-alert", 4, "Fling", playerToFling.Name .. " is sitting.")
+			notify("lucide:triangle-alert", 4, "Fling", playerToFling.Name .. " is sitting.", false)
 			continue
 		end
 		if not TCharacter or not TCharacter:FindFirstChildWhichIsA("BasePart") then
-			notify("lucide:user-x", 4, "Fling", playerToFling.Name .. ": character not found.")
+			notify("lucide:user-x", 4, "Fling", playerToFling.Name .. ": character not found.", false)
 			continue
 		end
 
@@ -1089,14 +1095,14 @@ func.feat.fling = function(...)
 		elseif Accessory and Handle then
 			SFBasePart(Handle, playerToFling, THumanoid, TRootPart)
 		else
-			notify("lucide:triangle-alert", 4, "Fling", playerToFling.Name .. ": can't find a proper part.")
+			notify("lucide:triangle-alert", 4, "Fling", playerToFling.Name .. ": can't find a proper part.", false)
 		end
 	end
 
 	BV:Destroy()
 	Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
 	Camera.CameraSubject = Humanoid
-	notify("lucide:send", 3, "Fling", "Fling complete.")
+	notify("lucide:send", 3, "Fling", "Fling complete.", false)
 
 	if oldPos then
 		repeat
@@ -1245,6 +1251,8 @@ func.persist.saveSettings = function()
 		ignoreteam_aimlock = ignoreTeamOpts.aimlock,
 		ignoreteam_hitbox = ignoreTeamOpts.hitbox,
 		ignoreteam_fling = ignoreTeamOpts.fling,
+		debug_notif = rare.debugNotif,
+		disable_noise_notif = rare.disableNoiseNotif,
 	}))
 end
 
@@ -1268,6 +1276,8 @@ func.persist.loadSettings = function()
 	if type(decoded.ignoreteam_aimlock) == "boolean" then ignoreTeamOpts.aimlock = decoded.ignoreteam_aimlock end
 	if type(decoded.ignoreteam_hitbox) == "boolean" then ignoreTeamOpts.hitbox = decoded.ignoreteam_hitbox end
 	if type(decoded.ignoreteam_fling) == "boolean" then ignoreTeamOpts.fling = decoded.ignoreteam_fling end
+	if type(decoded.debug_notif) == "boolean" then rare.debugNotif = decoded.debug_notif end
+	if type(decoded.disable_noise_notif) == "boolean" then rare.disableNoiseNotif = decoded.disable_noise_notif end
 end
 
 func.build.managerGui = UI.buildManagerGui
@@ -1717,7 +1727,7 @@ func.feat.enableESPAll = function()
 		end
 	end
 
-	notify("solar:eye-bold", 3, "ESP", "ESP applied to all players.")
+	notify("solar:eye-bold", 3, "ESP", "ESP applied to all players.", true)
 end
 
 func.feat.enableInstantPP = function()
@@ -1728,7 +1738,7 @@ func.feat.enableInstantPP = function()
 	end
 	for _, v in ipairs(workspace:GetDescendants()) do apply(v) end
 	NnBind.reconnect("ipp_added", workspace.DescendantAdded:Connect(apply))
-	notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts enabled.")
+	notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts enabled.", true)
 end
 
 func.feat.unwatch = function()
@@ -1736,11 +1746,11 @@ func.feat.unwatch = function()
 	NnBind.disconnect("watch_character")
 
 	if not playerChar then
-		notify("lucide:triangle-alert", 4, "Watch", "LocalPlayer character not found. Waiting for character...")
+		notify("lucide:triangle-alert", 4, "Watch", "LocalPlayer character not found. Waiting for character...", false)
 	end
 
 	Camera.CameraSubject = playerHum or (playerChar and playerChar:FindFirstChildOfClass("Humanoid"))
-	notify("sfsymbols:eyes", 3, "Watch", "Stopped watching.")
+	notify("sfsymbols:eyes", 3, "Watch", "Stopped watching.", true)
 end
 
 func.feat.watch = function(player)
@@ -1750,16 +1760,16 @@ func.feat.watch = function(player)
 
 	if player.Character then
 		updateCamera(player.Character)
-		notify("sfsymbols:eyes", 3, "Watch", "Now watching " .. player.Name .. ".")
+		notify("sfsymbols:eyes", 3, "Watch", "Now watching " .. player.Name .. ".", false)
 	else
-		notify("lucide:user-x", 4, "Watch", player.Name .. " has no character yet. Waiting for spawn...")
+		notify("lucide:user-x", 4, "Watch", player.Name .. " has no character yet. Waiting for spawn...", false)
 	end
 
 	NnBind.reconnect("watch_character", player.CharacterAdded:Connect(updateCamera))
 
 	NnBind.reconnect("watch_removing", PlayerRemoving:Connect(function(removedPlayer)
 		if removedPlayer == player then
-			notify("lucide:log-out", 4, "Watch", player.Name .. " has left the game. Reverting camera.")
+			notify("lucide:log-out", 4, "Watch", player.Name .. " has left the game. Reverting camera.", false)
 			func.feat.unwatch()
 		end
 	end))
@@ -1784,7 +1794,7 @@ do
 	func.feat.autoclickStart = function()
 		if acActive then return end
 		if not acTargetX or not acTargetY then
-			notify("lucide:triangle-alert", 4, "AutoClicker", "Set a target position first.")
+			notify("lucide:triangle-alert", 4, "AutoClicker", "Set a target position first.", false)
 			return
 		end
 		acActive = true
@@ -1906,12 +1916,12 @@ local function safehook(object, metamethod, hook, useCheckcaller)
 	end
 
 	if not execapi.getrawmetatable then
-		notify("lucide:triangle-alert", 4, "safehook", "Executor does not support metamethod hooking.")
+		notify("lucide:triangle-alert", 4, "safehook", "Executor does not support metamethod hooking.", false)
 		return nil
 	end
 	local mt = execapi.getrawmetatable(object)
 	if not mt then
-		notify("lucide:triangle-alert", 4, "safehook", "Executor does not support metamethod hooking.")
+		notify("lucide:triangle-alert", 4, "safehook", "Executor does not support metamethod hooking.", false)
 		return nil
 	end
 
@@ -1980,7 +1990,7 @@ func.feat.godmode = function(mode)
 
 	local hum = playerHum
 	if not hum then
-		notify("lucide:triangle-alert", 4, "GodMode", "No character found.")
+		notify("lucide:triangle-alert", 4, "GodMode", "No character found.", false)
 		return
 	end
 
@@ -2010,7 +2020,7 @@ func.feat.godmode = function(mode)
 
 		if m == "hook" then
 			if type(getnamecallmethod) ~= "function" then
-				notify("lucide:triangle-alert", 4, "GodMode", "Hook failed, falling back to nohook.")
+				notify("lucide:triangle-alert", 4, "GodMode", "Hook failed, falling back to nohook.", false)
 				m = "nohook"
 			else
 				rare.god_hum = h
@@ -2046,7 +2056,7 @@ func.feat.godmode = function(mode)
 					end, true)
 
 					if not rare.god_origNI or not rare.god_origNC then
-						notify("lucide:triangle-alert", 4, "GodMode", "Hook failed, falling back to nohook.")
+						notify("lucide:triangle-alert", 4, "GodMode", "Hook failed, falling back to nohook.", false)
 						m = "nohook"
 					end
 				end
@@ -2070,7 +2080,7 @@ func.feat.godmode = function(mode)
 	end
 
 	applyGodmode(rare.god_mode, hum)
-	notify("sfsymbols:heartFill", 3, "GodMode", "Enabled (" .. (rare.god_mode or "nohook") .. ").")
+	notify("sfsymbols:heartFill", 3, "GodMode", "Enabled (" .. (rare.god_mode or "nohook") .. ").", true)
 
 	NnBind.reconnect("gm_charAdded", CharacterAdded:Connect(function()
 		CharacterCached:Wait()
@@ -2165,7 +2175,7 @@ end
 func.feat.antiAfk = function(mode)
 	afkMode = mode
 	if mode ~= nil then
-		notify("geist:cursor-click", 3, "Anti-AFK", "Enabled (" .. tostring(mode) .. ").")
+		notify("geist:cursor-click", 3, "Anti-AFK", "Enabled (" .. tostring(mode) .. ").", true)
 	end
 	task.spawn(function()
 		while afkMode do
@@ -2208,7 +2218,7 @@ Cmd.add({"walkspeed", "ws"}, {
 			local humanoid = playerHum
 			if humanoid then
 				humanoid.WalkSpeed = speed
-				notify("sfsymbols:figureWalk", 3, "WalkSpeed", "Set to " .. tostring(speed))
+				notify("sfsymbols:figureWalk", 3, "WalkSpeed", "Set to " .. tostring(speed), false)
 			end
 		end
 	end
@@ -2218,7 +2228,7 @@ Cmd.add({"loopwalkspeed", "loopws", "lws"}, {
 	args = "speed",
 	fn = function(speed)
 		func.feat.loopwalkspeed(tonumber(speed))
-		notify("geist:loader-circle", 3, "LoopWalkSpeed", "Looping at " .. tostring(speed))
+		notify("geist:loader-circle", 3, "LoopWalkSpeed", "Looping at " .. tostring(speed), true)
 	end,
 })
 
@@ -2226,7 +2236,7 @@ Cmd.add({"unloopwalkspeed", "unloopws", "unlws"}, {
 	fn = function()
 		NnBind.disconnect("ws_changed")
 		NnBind.disconnect("ws_charAdded")
-		notify("geist:loader-circle", 3, "LoopWalkSpeed", "Loop stopped.")
+		notify("geist:loader-circle", 3, "LoopWalkSpeed", "Loop stopped.", true)
 	end,
 })
 
@@ -2237,7 +2247,7 @@ Cmd.add({"tpwalkspeed", "tpwalk"}, {
 		local stepRate = 1 / 60
 		local maxSteps = 3
 		local accumulator = 0
-		notify("sfsymbols:hareFill", 3, "TpWalkSpeed", "TP walk set to " .. tostring(speed))
+		notify("sfsymbols:hareFill", 3, "TpWalkSpeed", "TP walk set to " .. tostring(speed), true)
 		NnBind.reconnect("tpwalk", RunService.Heartbeat:Connect(function(deltaTime)
 			accumulator = math.min(accumulator + (tonumber(deltaTime) or 0), stepRate * maxSteps)
 			local humanoid = playerHum
@@ -2255,7 +2265,7 @@ Cmd.add({"tpwalkspeed", "tpwalk"}, {
 Cmd.add({"untpwalkspeed", "untpwalk"}, {
 	fn = function()
 		NnBind.disconnect("tpwalk")
-		notify("sfsymbols:tortoiseFill", 3, "TpWalkSpeed", "TP walk stopped.")
+		notify("sfsymbols:tortoiseFill", 3, "TpWalkSpeed", "TP walk stopped.", true)
 	end,
 })
 
@@ -2268,7 +2278,7 @@ Cmd.add({"jumppower", "jp"}, {
 			local humanoid = playerHum
 			if humanoid then
 				humanoid.JumpPower = power
-				notify("sfsymbols:arrowUpCircleFill", 3, "JumpPower", "Set to " .. tostring(power))
+				notify("sfsymbols:arrowUpCircleFill", 3, "JumpPower", "Set to " .. tostring(power), false)
 			end
 		end
 	end
@@ -2290,7 +2300,7 @@ Cmd.add({"loopjumppower", "loopjp"}, {
 		end
 		apply()
 		NnBind.reconnect("jp_charAdded", CharacterAdded:Connect(apply))
-		notify("geist:loader-circle", 3, "LoopJumpPower", "Looping at " .. tostring(power))
+		notify("geist:loader-circle", 3, "LoopJumpPower", "Looping at " .. tostring(power), true)
 	end,
 })
 
@@ -2298,7 +2308,7 @@ Cmd.add({"unloopjumppower", "unloopjp"}, {
 	fn = function()
 		NnBind.disconnect("jp_changed")
 		NnBind.disconnect("jp_charAdded")
-		notify("geist:loader-circle", 3, "LoopJumpPower", "Loop stopped.")
+		notify("geist:loader-circle", 3, "LoopJumpPower", "Loop stopped.", true)
 	end,
 })
 
@@ -2306,10 +2316,10 @@ Cmd.add({"resetchar", "respawn", "reset"}, {
 	fn = function()
 		local hum = playerHum
 		if not hum then
-			notify("lucide:triangle-alert", 4, "Reset", "No character found.")
+			notify("lucide:triangle-alert", 4, "Reset", "No character found.", false)
 			return
 		end
-		notify("lucide:refresh-cw", 3, "Reset", "Resetting character...")
+		notify("lucide:refresh-cw", 3, "Reset", "Resetting character...", false)
 		hum.Health = 0
 		hum:Destroy()
 	end,
@@ -2329,7 +2339,7 @@ Cmd.add({"CopyAttribute", "CopyAttr", "Attribute", "Attr"}, {
 		end
 
 		if not next(collected) then
-			notify("lucide:triangle-alert", 4, "CopyAttribute", "No attributes found.")
+			notify("lucide:triangle-alert", 4, "CopyAttribute", "No attributes found.", false)
 			return
 		end
 
@@ -2342,10 +2352,10 @@ Cmd.add({"CopyAttribute", "CopyAttr", "Attribute", "Attr"}, {
 
 		if execapi.clipboard then
 			execapi.clipboard(result)
-			notify("craft:clipboard-stroke", 3, "CopyAttribute", "Attributes copied to clipboard.")
+			notify("craft:clipboard-stroke", 3, "CopyAttribute", "Attributes copied to clipboard.", false)
 		else
 			print(result)
-			notify("lucide:triangle-alert", 4, "CopyAttribute", "Clipboard API not available — printed to console.")
+			notify("lucide:triangle-alert", 4, "CopyAttribute", "Clipboard API not available — printed to console.", false)
 		end
 	end,
 })
@@ -2358,18 +2368,18 @@ Cmd.add({"copyposition", "copypos", "cpos"}, {
 		if name and name ~= "" then
 			local targets = {prefixMatch(name)}
 			if #targets == 0 then
-				notify("lucide:user-x", 4, "CopyPos", "Player not found.")
+				notify("lucide:user-x", 4, "CopyPos", "Player not found.", false)
 				return
 			end
 			targetHRP = targets[1].Character and targets[1].Character:FindFirstChild("HumanoidRootPart")
 			if not targetHRP then
-				notify("lucide:triangle-alert", 4, "CopyPos", targets[1].Name .. " has no character.")
+				notify("lucide:triangle-alert", 4, "CopyPos", targets[1].Name .. " has no character.", false)
 				return
 			end
 		else
 			targetHRP = playerHRP
 			if not targetHRP then
-				notify("lucide:triangle-alert", 4, "CopyPos", "Your character was not found.")
+				notify("lucide:triangle-alert", 4, "CopyPos", "Your character was not found.", false)
 				return
 			end
 		end
@@ -2379,10 +2389,10 @@ Cmd.add({"copyposition", "copypos", "cpos"}, {
 
 		if execapi.clipboard then
 			execapi.clipboard(str)
-			notify("craft:clipboard-stroke", 3, "CopyPos", "Position copied: " .. str)
+			notify("craft:clipboard-stroke", 3, "CopyPos", "Position copied: " .. str, false)
 		else
 			print("Position: " .. str)
-			notify("lucide:triangle-alert", 4, "CopyPos", "Clipboard API not available — printed to console.")
+			notify("lucide:triangle-alert", 4, "CopyPos", "Clipboard API not available — printed to console.", false)
 		end
 	end,
 })
@@ -2414,7 +2424,7 @@ Cmd.add({"vehiclefly", "vfly"}, {
 	args = "speed",
 	fn = function(speed)
 		func.feat.fly(tonumber(speed) or 1, true)
-		notify("craft:rocket-stroke", 3, "Vehicle Fly", "Vehicle fly enabled.")
+		notify("craft:rocket-stroke", 3, "Vehicle Fly", "Vehicle fly enabled.", true)
 	end,
 	hud = "toggle",
 	hudPlaceholder = "speed",
@@ -2433,7 +2443,7 @@ DC.stopVfly = func.feat.unfly
 Cmd.add({"unvehiclefly", "unvfly"}, {
 	fn = function()
 		func.feat.unfly()
-		notify("craft:rocket-stroke", 3, "Vehicle Fly", "Vehicle fly disabled.")
+		notify("craft:rocket-stroke", 3, "Vehicle Fly", "Vehicle fly disabled.", true)
 	end,
 })
 
@@ -2467,7 +2477,7 @@ Cmd.add({"freeze"}, {
 				part.Anchored = true
 			end
 		end
-		notify("lucide:snowflake", 3, "Freeze", "Character frozen.")
+		notify("lucide:snowflake", 3, "Freeze", "Character frozen.", true)
 	end,
 	hud = "toggle",
 	hudLabelOn = "freeze",
@@ -2506,7 +2516,7 @@ Cmd.add({"unfreeze"}, {
 				part.Anchored = false
 			end
 		end
-		notify("sfsymbols:flameFill", 3, "Freeze", "Character unfrozen.")
+		notify("sfsymbols:flameFill", 3, "Freeze", "Character unfrozen.", true)
 	end,
 })
 
@@ -2524,7 +2534,7 @@ Cmd.add({"unnoclip", "clip", "unnc"}, {
 			part.CanCollide = true
 		end
 		table.clear(noclipParts)
-		notify("solar:ghost-bold", 3, "Noclip", "Noclip disabled.")
+		notify("solar:ghost-bold", 3, "Noclip", "Noclip disabled.", true)
 	end,
 })
 
@@ -2546,35 +2556,35 @@ Cmd.add({"uninvisible", "uninvis"}, {
 				end
 			end
 		end
-		notify("sfsymbols:eyeFill", 3, "Invisible", "Visibility restored.")
+		notify("sfsymbols:eyeFill", 3, "Invisible", "Visibility restored.", true)
 	end,
 })
 
 Cmd.add({"antiinvisible", "antiinvis", "avis"}, {
 	fn = function()
 		func.feat.antinvisfling(true, rare.antiFling)
-		notify("gravity:eye", 3, "AntiInvis", "Anti-invisible enabled.")
+		notify("gravity:eye", 3, "AntiInvis", "Anti-invisible enabled.", true)
 	end,
 })
 
 Cmd.add({"unantiinvisible", "unantiinvis", "unavis"}, {
 	fn = function()
 		func.feat.antinvisfling(false, rare.antiFling)
-		notify("gravity:eye-slash", 3, "AntiInvis", "Anti-invisible disabled.")
+		notify("gravity:eye-slash", 3, "AntiInvis", "Anti-invisible disabled.", true)
 	end,
 })
 
 Cmd.add({"antifling"}, {
 	fn = function()
 		func.feat.antinvisfling(rare.antiInvis, true)
-		notify("gravity:shield", 3, "AntiFling", "Anti-fling enabled.")
+		notify("gravity:shield", 3, "AntiFling", "Anti-fling enabled.", true)
 	end,
 })
 
 Cmd.add({"unantifling"}, {
 	fn = function()
 		func.feat.antinvisfling(rare.antiInvis, false)
-		notify("gravity:shield", 3, "AntiFling", "Anti-fling disabled.")
+		notify("gravity:shield", 3, "AntiFling", "Anti-fling disabled.", true)
 	end,
 })
 
@@ -2583,10 +2593,10 @@ Cmd.add({"GameId"}, {
 		local id = tostring(game.GameId)
 		if execapi.clipboard then
 			execapi.clipboard(id)
-			notify("craft:clipboard-stroke", 3, "GameId", "Universe ID copied: " .. id)
+			notify("craft:clipboard-stroke", 3, "GameId", "Universe ID copied: " .. id, false)
 		else
 			print("Universe ID: " .. id)
-			notify("lucide:triangle-alert", 4, "GameId", "Clipboard API not available — printed to console.")
+			notify("lucide:triangle-alert", 4, "GameId", "Clipboard API not available — printed to console.", false)
 		end
 	end,
 })
@@ -2596,10 +2606,10 @@ Cmd.add({"PlaceId"}, {
 		local id = tostring(game.PlaceId)
 		if execapi.clipboard then
 			execapi.clipboard(id)
-			notify("craft:clipboard-stroke", 3, "PlaceId", "Place ID copied: " .. id)
+			notify("craft:clipboard-stroke", 3, "PlaceId", "Place ID copied: " .. id, false)
 		else
 			print("Place ID: " .. id)
-			notify("lucide:triangle-alert", 4, "PlaceId", "Clipboard API not available — printed to console.")
+			notify("lucide:triangle-alert", 4, "PlaceId", "Clipboard API not available — printed to console.", false)
 		end
 	end,
 })
@@ -2609,10 +2619,10 @@ Cmd.add({"jobid"}, {
 		local id = tostring(game.JobId)
 		if execapi.clipboard then
 			execapi.clipboard(id)
-			notify("craft:clipboard-stroke", 3, "JobId", "Job ID copied: " .. id)
+			notify("craft:clipboard-stroke", 3, "JobId", "Job ID copied: " .. id, false)
 		else
 			print("Job ID: " .. id)
-			notify("lucide:triangle-alert", 4, "JobId", "Clipboard API not available — printed to console.")
+			notify("lucide:triangle-alert", 4, "JobId", "Clipboard API not available — printed to console.", false)
 		end
 	end,
 })
@@ -2622,7 +2632,7 @@ Cmd.add({"joinplaceid"}, {
 	fn = function(placeId)
 		placeId = tonumber(placeId)
 		if not placeId then return end
-		notify("sfsymbols:doorLeftHandOpen", 3, "JoinPlaceId", "Joining place " .. tostring(placeId) .. "...")
+		notify("sfsymbols:doorLeftHandOpen", 3, "JoinPlaceId", "Joining place " .. tostring(placeId) .. "...", false)
 		TeleportService:Teleport(placeId, LocalPlayer)
 	end,
 })
@@ -2631,7 +2641,7 @@ Cmd.add({"joinjobid"}, {
 	args = "jobid",
 	fn = function(jobId)
 		if not jobId then return end
-		notify("geist:database", 3, "JoinJobId", "Joining server " .. tostring(jobId) .. "...")
+		notify("geist:database", 3, "JoinJobId", "Joining server " .. tostring(jobId) .. "...", false)
 		TeleportService:TeleportToPlaceInstance(game.PlaceId, jobId, LocalPlayer)
 	end,
 })
@@ -2650,7 +2660,7 @@ Cmd.add({"unantivoid"}, {
 			platform:Destroy()
 		end
 		workspace.FallenPartsDestroyHeight = rare.fpdh
-		notify("solar:shield-check-bold", 3, "AntiVoid", "Anti-void disabled.")
+		notify("solar:shield-check-bold", 3, "AntiVoid", "Anti-void disabled.", true)
 	end,
 })
 
@@ -2661,7 +2671,7 @@ Cmd.add({"fixcam", "fixcamera"}, {
 		LocalPlayer.CameraMode = Enum.CameraMode.Classic
 		LocalPlayer.CameraMinZoomDistance = 0.5
 		LocalPlayer.CameraMaxZoomDistance = 1e7
-		notify("geist:external", 3, "FixCam", "Camera fixed.")
+		notify("geist:external", 3, "FixCam", "Camera fixed.", false)
 	end,
 })
 
@@ -2671,7 +2681,7 @@ Cmd.add({"minzoom"}, {
 		value = tonumber(value)
 		if not value then return end
 		LocalPlayer.CameraMinZoomDistance = value
-		notify("lucide:zoom-in", 3, "MinZoom", "Set to " .. tostring(value))
+		notify("lucide:zoom-in", 3, "MinZoom", "Set to " .. tostring(value), false)
 	end,
 })
 
@@ -2681,7 +2691,7 @@ Cmd.add({"maxzoom"}, {
 		value = tonumber(value)
 		if not value then return end
 		LocalPlayer.CameraMaxZoomDistance = value
-		notify("lucide:zoom-out", 3, "MaxZoom", "Set to " .. tostring(value))
+		notify("lucide:zoom-out", 3, "MaxZoom", "Set to " .. tostring(value), false)
 	end,
 })
 
@@ -2696,14 +2706,14 @@ Cmd.add({"loopminzoom"}, {
 				LocalPlayer.CameraMinZoomDistance = value
 			end
 		end))
-		notify("lucide:zoom-in", 3, "LoopMinZoom", "Looping at " .. tostring(value))
+		notify("lucide:zoom-in", 3, "LoopMinZoom", "Looping at " .. tostring(value), true)
 	end,
 })
 
 Cmd.add({"unloopminzoom"}, {
 	fn = function()
 		NnBind.disconnect("loopminzoom")
-		notify("lucide:zoom-in", 3, "LoopMinZoom", "Loop stopped.")
+		notify("lucide:zoom-in", 3, "LoopMinZoom", "Loop stopped.", true)
 	end,
 })
 
@@ -2718,20 +2728,20 @@ Cmd.add({"loopmaxzoom"}, {
 				LocalPlayer.CameraMaxZoomDistance = value
 			end
 		end))
-		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Looping at " .. tostring(value))
+		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Looping at " .. tostring(value), true)
 	end,
 })
 
 Cmd.add({"unloopmaxzoom"}, {
 	fn = function()
 		NnBind.disconnect("loopmaxzoom")
-		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Loop stopped.")
+		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Loop stopped.", true)
 	end,
 })
 
 Cmd.add({"selfkick", "sk"}, {
 	fn = function()
-		notify("geist:external", 3, "SelfKick", "Kicking yourself...")
+		notify("geist:external", 3, "SelfKick", "Kicking yourself...", false)
 		LocalPlayer:Kick("You have been banned.\n\nReason: Exploiting\n\nAppeal at: www.roblox.com/appeal")
 	end,
 })
@@ -2757,7 +2767,7 @@ Cmd.add({"esp", "espplayers", "playeresp"}, {
 			if n then names[#names + 1] = n:lower() end
 		end
 		if #names == 0 then
-			notify("lucide:triangle-alert", 4, "ESP", "No players specified.")
+			notify("lucide:triangle-alert", 4, "ESP", "No players specified.", false)
 			return
 		end
 		if names[1] == "all" then
@@ -2771,9 +2781,9 @@ Cmd.add({"esp", "espplayers", "playeresp"}, {
 					func.esp.apply(target, espOpts.color, espOpts)
 				end
 			end
-			notify("solar:eye-bold", 3, "ESP", "ESP applied.")
+			notify("solar:eye-bold", 3, "ESP", "ESP applied.", true)
 		else
-			notify("lucide:user-x", 4, "ESP", "Player not found.")
+			notify("lucide:user-x", 4, "ESP", "Player not found.", false)
 		end
 	end,
 })
@@ -2785,7 +2795,7 @@ Cmd.add({"espall", "allesp", "espallplayers"}, {
 Cmd.add({"unesp"}, {
 	fn = function()
 		func.esp.clearAll()
-		notify("solar:eye-closed-bold", 3, "ESP", "ESP removed.")
+		notify("solar:eye-closed-bold", 3, "ESP", "ESP removed.", true)
 	end,
 })
 
@@ -2796,7 +2806,7 @@ Cmd.add({"instantproximityprompt", "instantpp", "ipp"}, {
 Cmd.add({"uninstantproximityprompt", "uninstantpp", "unipp"}, {
 	fn = function()
 		NnBind.disconnect("ipp_added")
-		notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts disabled.")
+		notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts disabled.", true)
 	end,
 })
 
@@ -2809,7 +2819,7 @@ Cmd.add({"fling"}, {
 			if n then names[#names + 1] = n:lower() end
 		end
 		if #names == 0 then
-			notify("lucide:triangle-alert", 4, "Fling", "No players specified to fling.")
+			notify("lucide:triangle-alert", 4, "Fling", "No players specified to fling.", false)
 			return
 		end
 		if names[1] == "all" then
@@ -2826,7 +2836,7 @@ Cmd.add({"fling"}, {
 		if #targets > 0 then
 			func.feat.fling(table.unpack(targets))
 		else
-			notify("lucide:user-x", 4, "Fling", "Player not found.")
+			notify("lucide:user-x", 4, "Fling", "Player not found.", false)
 		end
 	end,
 })
@@ -2867,7 +2877,7 @@ Cmd.add({"walkfling", "wf"}, {
 				end)
 			end
 		end))
-		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling enabled.")
+		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling enabled.", true)
 	end,
 })
 
@@ -2875,7 +2885,7 @@ Cmd.add({"unwalkfling", "unwf"}, {
 	fn = function()
 		NnBind.disconnect("walkfling_heartbeat")
 		NnBind.disconnect("walkfling_charAdded")
-		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling disabled.")
+		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling disabled.", true)
 	end,
 })
 
@@ -2885,7 +2895,7 @@ Cmd.add({"Reach"}, {
 		size = tonumber(size) or 12
 		local tool = playerChar and playerChar:FindFirstChildOfClass("Tool")
 		if not tool or not tool:FindFirstChild("Handle") then
-			notify("lucide:triangle-alert", 4, "Reach", "No tool equipped.")
+			notify("lucide:triangle-alert", 4, "Reach", "No tool equipped.", false)
 			return
 		end
 		local handle = tool.Handle
@@ -2901,7 +2911,7 @@ Cmd.add({"Reach"}, {
 		end
 		handle.Massless = true
 		handle.Size = Vector3.new(size, size, size)
-		notify("geist:arrow-circle-up", 3, "Reach", "Reach set to " .. tostring(size))
+		notify("geist:arrow-circle-up", 3, "Reach", "Reach set to " .. tostring(size), true)
 	end,
 })
 
@@ -2917,7 +2927,7 @@ Cmd.add({"Unreach"}, {
 			handle.FunTIMES:Destroy()
 		end
 		handle.Massless = false
-		notify("geist:arrow-circle-up", 3, "Reach", "Reach removed.")
+		notify("geist:arrow-circle-up", 3, "Reach", "Reach removed.", true)
 	end,
 })
 
@@ -2929,7 +2939,7 @@ Cmd.add({"watch", "view", "spectate"}, {
 		if #targets > 0 then
 			func.feat.watch(targets[1])
 		else
-			notify("lucide:user-x", 4, "Watch", "Player not found.")
+			notify("lucide:user-x", 4, "Watch", "Player not found.", false)
 		end
 	end,
 })
@@ -2944,7 +2954,7 @@ Cmd.add({"fov"}, {
 		value = tonumber(value)
 		if not value then return end
 		Camera.FieldOfView = value
-		notify("craft:camera-lens-snap-01-stroke", 3, "FOV", "Set to " .. tostring(value))
+		notify("craft:camera-lens-snap-01-stroke", 3, "FOV", "Set to " .. tostring(value), false)
 	end,
 })
 
@@ -2956,7 +2966,7 @@ Cmd.add({"teleport", "tp", "goto"}, {
 
 		local hrp = playerHRP
 		if not hrp then
-			notify("lucide:triangle-alert", 4, "Teleport", "Character not found.")
+			notify("lucide:triangle-alert", 4, "Teleport", "Character not found.", false)
 			return
 		end
 
@@ -2969,24 +2979,24 @@ Cmd.add({"teleport", "tp", "goto"}, {
 				nums[#nums + 1] = tonumber(n)
 			end
 			if #nums < 3 then
-				notify("lucide:triangle-alert", 4, "Teleport", "Invalid coordinates.")
+				notify("lucide:triangle-alert", 4, "Teleport", "Invalid coordinates.", false)
 				return
 			end
 			hrp.CFrame = CFrame.new(nums[1], nums[2], nums[3])
-			notify("craft:gps-01-stroke", 3, "Teleport", string.format("Teleported to %.1f, %.1f, %.1f", nums[1], nums[2], nums[3]))
+			notify("craft:gps-01-stroke", 3, "Teleport", string.format("Teleported to %.1f, %.1f, %.1f", nums[1], nums[2], nums[3]), false)
 		else
 			local targets = {prefixMatch(args[1])}
 			if #targets == 0 then
-				notify("lucide:user-x", 4, "Teleport", "Player not found.")
+				notify("lucide:user-x", 4, "Teleport", "Player not found.", false)
 				return
 			end
 			local targetHRP = targets[1].Character and targets[1].Character:FindFirstChild("HumanoidRootPart")
 			if not targetHRP then
-				notify("lucide:triangle-alert", 4, "Teleport", targets[1].Name .. " has no character.")
+				notify("lucide:triangle-alert", 4, "Teleport", targets[1].Name .. " has no character.", false)
 				return
 			end
 			hrp.CFrame = targetHRP.CFrame + Vector3.new(0, 3, 0)
-			notify("craft:gps-01-stroke", 3, "Teleport", "Teleported to " .. targets[1].Name .. ".")
+			notify("craft:gps-01-stroke", 3, "Teleport", "Teleported to " .. targets[1].Name .. ".", false)
 		end
 	end,
 })
@@ -2997,7 +3007,7 @@ Cmd.add({"infinitejump", "infjump"}, {
 		NnBind.reconnect("ij_jumped", UserInputService.JumpRequest:Connect(function()
 			local hum = playerHum
 			if not hum then
-				notify("lucide:triangle-alert", 3, "Infinite Jump", "No character found.")
+				notify("lucide:triangle-alert", 3, "Infinite Jump", "No character found.", false)
 				return
 			end
 			local now = tick()
@@ -3005,20 +3015,20 @@ Cmd.add({"infinitejump", "infjump"}, {
 			lastJump = now
 			hum:ChangeState(Enum.HumanoidStateType.Jumping)
 		end))
-		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Enabled.")
+		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Enabled.", true)
 	end,
 })
 
 Cmd.add({"uninfinitejump", "uninfjump"}, {
 	fn = function()
 		NnBind.disconnect("ij_jumped")
-		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Disabled.")
+		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Disabled.", true)
 	end,
 })
 
 Cmd.add({"rejoin", "rj"}, {
 	fn = function()
-		notify("lucide:refresh-cw", 3, "Rejoin", "Rejoining...")
+		notify("lucide:refresh-cw", 3, "Rejoin", "Rejoining...", false)
 		task.wait(0.5)
 		TeleportService:Teleport(game.PlaceId, LocalPlayer)
 	end,
@@ -3026,12 +3036,12 @@ Cmd.add({"rejoin", "rj"}, {
 
 Cmd.add({"serverhop", "shop"}, {
 	fn = function()
-		notify("lucide:server", 3, "Serverhop", "Finding server...")
+		notify("lucide:server", 3, "Serverhop", "Finding server...", false)
 		local ok, res = pcall(function()
 			return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
 		end)
 		if not ok or not res or not res.data then
-			notify("lucide:triangle-alert", 4, "Serverhop", "Failed to fetch server list.")
+			notify("lucide:triangle-alert", 4, "Serverhop", "Failed to fetch server list.", false)
 			return
 		end
 		for _, server in ipairs(res.data) do
@@ -3040,13 +3050,13 @@ Cmd.add({"serverhop", "shop"}, {
 				return
 			end
 		end
-		notify("lucide:triangle-alert", 4, "Serverhop", "No available server found.")
+		notify("lucide:triangle-alert", 4, "Serverhop", "No available server found.", false)
 	end,
 })
 
 Cmd.add({"smallserverhop", "sshop"}, {
 	fn = function()
-		notify("lucide:server", 3, "SmallServerHop", "Finding small server...")
+		notify("lucide:server", 3, "SmallServerHop", "Finding small server...", false)
 
 		local best = nil
 		local cursor = ""
@@ -3082,7 +3092,7 @@ Cmd.add({"smallserverhop", "sshop"}, {
 		if best then
 			TeleportService:TeleportToPlaceInstance(game.PlaceId, best.id, LocalPlayer)
 		else
-			notify("lucide:triangle-alert", 4, "SmallServerHop", "No small server found.")
+			notify("lucide:triangle-alert", 4, "SmallServerHop", "No small server found.", false)
 		end
 	end,
 })
@@ -3105,14 +3115,14 @@ Cmd.add({"admin"}, {
 			if msg:sub(1, 1) ~= rare.cmdPrefix then return end
 			runCommand(msg:sub(2))
 		end))
-		notify("geist:code-bracket", 3, "Admin", "Chat commands enabled.")
+		notify("geist:code-bracket", 3, "Admin", "Chat commands enabled.", true)
 	end,
 })
 
 Cmd.add({"unadmin"}, {
 	fn = function()
 		NnBind.disconnect("admin_chat")
-		notify("geist:code-bracket", 3, "Admin", "Chat commands disabled.")
+		notify("geist:code-bracket", 3, "Admin", "Chat commands disabled.", true)
 	end,
 })
 
@@ -3125,7 +3135,7 @@ Cmd.add({"antikick"}, {
 			end
 			return rare.antikick_orig(self, ...)
 		end, true)
-		notify("sfsymbols:checkmarkShieldFill", 3, "AntiKick", "Anti-kick enabled.")
+		notify("sfsymbols:checkmarkShieldFill", 3, "AntiKick", "Anti-kick enabled.", true)
 	end,
 })
 Cmd.add({"unantikick"}, {
@@ -3133,7 +3143,7 @@ Cmd.add({"unantikick"}, {
 		if not rare.antikick_orig then return end
 		safeunhook(game, "__namecall", rare.antikick_orig)
 		rare.antikick_orig = nil
-		notify("sfsymbols:xmarkShieldFill", 3, "AntiKick", "Anti-kick disabled.")
+		notify("sfsymbols:xmarkShieldFill", 3, "AntiKick", "Anti-kick disabled.", true)
 	end,
 })
 
@@ -3193,7 +3203,7 @@ Cmd.add({"ungodMode", "ungod"}, {
 			hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
 			hum.BreakJointsOnDeath = true
 		end
-		notify("sfsymbols:heartSlashFill", 3, "GodMode", "Disabled.")
+		notify("sfsymbols:heartSlashFill", 3, "GodMode", "Disabled.", true)
 	end,
 })
 
@@ -3208,7 +3218,7 @@ Cmd.add({"tptool", "clicktp"}, {
             if hrp then hrp.CFrame = mouse.Hit end
         end)
         tool.Parent = LocalPlayer.Backpack
-        notify("sfsymbols:handPointUpLeftFill", 3, "TpTool", "Click-TP tool added to backpack.")
+        notify("sfsymbols:handPointUpLeftFill", 3, "TpTool", "Click-TP tool added to backpack.", false)
     end,
 })
 
@@ -3217,7 +3227,7 @@ Cmd.add({"untptool", "unclicktp"}, {
         local tool = LocalPlayer.Backpack:FindFirstChild("tptool") or (playerChar and playerChar:FindFirstChild("tptool"))
         if tool then
             tool:Destroy()
-            notify("sfsymbols:handPointUpLeftFill", 3, "TpTool", "Click-TP tool removed.")
+            notify("sfsymbols:handPointUpLeftFill", 3, "TpTool", "Click-TP tool removed.", false)
         end
     end,
 })
@@ -3239,7 +3249,7 @@ Cmd.add({"spin"}, {
 		end
 
 		applySpin(hrp)
-		notify("sfsymbols:rotateRightFill", 3, "Spin", "Spin enabled.")
+		notify("sfsymbols:rotateRightFill", 3, "Spin", "Spin enabled.", true)
 
 		NnBind.reconnect("spin_charAdded", CharacterAdded:Connect(function(newChar)
 			local newHrp = newChar:WaitForChild("HumanoidRootPart")
@@ -3258,7 +3268,7 @@ Cmd.add({"unspin"}, {
      rare.spinBav = nil end
 		local hum = playerHum
 		if hum then hum.AutoRotate = true end
-		notify("sfsymbols:rotateLeftFill", 3, "Spin", "Spin disabled.")
+		notify("sfsymbols:rotateLeftFill", 3, "Spin", "Spin disabled.", true)
 	end,
 })
 
@@ -3295,7 +3305,7 @@ Cmd.add({"antiafk", "aafk"}, {
 Cmd.add({"unantiafk", "unaafk"}, {
 	fn = function()
 		func.feat.antiAfk(nil)
-		notify("geist:cursor-click", 3, "Anti-AFK", "Disabled.")
+		notify("geist:cursor-click", 3, "Anti-AFK", "Disabled.", true)
 	end,
 })
 
@@ -3377,7 +3387,7 @@ Cmd.add({"aimlock"}, {
 			end))
 
 			Camera.CameraType = Enum.CameraType.Track
-			notify("sfsymbols:target", 3, "Aimlock", "Aimlock enabled (" .. targetPartName .. ").")
+			notify("sfsymbols:target", 3, "Aimlock", "Aimlock enabled (" .. targetPartName .. ").", true)
 
 			NnBind.reconnect("aimlock_camtype", Camera:GetPropertyChangedSignal("CameraType"):Connect(function()
 				local ct = Camera.CameraType
@@ -3493,7 +3503,7 @@ Cmd.add({"unaimlock"}, {
 			rare.aimlockGui:Destroy()
 			rare.aimlockGui = nil
 		end
-		notify("sfsymbols:target", 3, "Aimlock", "Aimlock disabled.")
+		notify("sfsymbols:target", 3, "Aimlock", "Aimlock disabled.", true)
 	end,
 })
 
@@ -3579,7 +3589,7 @@ Cmd.add({"SilentAim", "SA"}, {
 			end, true)
 
 			if not rare.saHookOriginal then
-				notify("lucide:triangle-alert", 4, "SilentAim", "Hook failed — metamethod hooking not supported.")
+				notify("lucide:triangle-alert", 4, "SilentAim", "Hook failed — metamethod hooking not supported.", false)
 				NnBind.disconnect("sa_candidates")
 				return
 			end
@@ -3639,7 +3649,7 @@ Cmd.add({"SilentAim", "SA"}, {
 				end))
 			end
 
-			notify("sfsymbols:target", 3, "SilentAim", "Enabled (" .. targetPart .. ", " .. (isNear and "near" or "fov " .. fov) .. ").")
+			notify("sfsymbols:target", 3, "SilentAim", "Enabled (" .. targetPart .. ", " .. (isNear and "near" or "fov " .. fov) .. ").", true)
 		end)
 	end,
 })
@@ -3660,7 +3670,7 @@ Cmd.add({"UnSilentAim", "UnSA"}, {
 		NnBind.disconnect("sa_mouse")
 		NnBind.disconnect("sa_press")
 		NnBind.disconnect("sa_release")
-		notify("sfsymbols:target", 3, "SilentAim", "Silent aim disabled.")
+		notify("sfsymbols:target", 3, "SilentAim", "Silent aim disabled.", true)
 	end,
 })
 
@@ -3762,7 +3772,7 @@ Cmd.add({"hitbox", "hb"}, {
 			end
 		end))
 
-		notify("lucide:box", 3, "Hitbox", "Hitbox set to " .. tostring(size) .. ".")
+		notify("lucide:box", 3, "Hitbox", "Hitbox set to " .. tostring(size) .. ".", true)
 	end,
 })
 
@@ -3787,7 +3797,7 @@ Cmd.add({"unhitbox", "unhb"}, {
 			end
 		end
 		table.clear(rare.hitboxOriginals)
-		notify("lucide:boxes", 3, "Hitbox", "Hitbox removed.")
+		notify("lucide:boxes", 3, "Hitbox", "Hitbox removed.", true)
 	end,
 })
 
@@ -3814,7 +3824,7 @@ Cmd.add({"cbring", "clientbring", "clientb"}, {
 				hrp.CFrame = myHrp.CFrame * CFrame.new(0, 0, -5)
 			end
 		end
-		notify("sfsymbols:person2Fill", 3, "CBring", "Brought players to you.")
+		notify("sfsymbols:person2Fill", 3, "CBring", "Brought players to you.", false)
 	end,
 })
 
@@ -3844,7 +3854,7 @@ Cmd.add({"loopcbring", "loopclientb", "loppclientb", "loopclientbring", "lcbring
 				end
 			end
 		end))
-		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring enabled.")
+		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring enabled.", true)
 	end,
 })
 
@@ -3863,7 +3873,7 @@ Cmd.add({"unloopcbring", "unloopclientb", "unloopcientb", "unlcbring", "unlclien
 				NnBind.disconnect("loopcbring_heartbeat")
 			end
 		end
-		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring disabled.")
+		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring disabled.", true)
 	end,
 })
 
@@ -3960,7 +3970,7 @@ Cmd.add({"fpsbooster", "lowgraphics", "boostfps", "lowg", "antilag"}, {
 
 		NnBind.reconnect("fpsboost_descendantadded", workspace.DescendantAdded:Connect(optimize))
 
-		notify("lucide:zap", 4, "FPS Booster", "Low graphics applied. Rejoin to restore.")
+		notify("lucide:zap", 4, "FPS Booster", "Low graphics applied. Rejoin to restore.", true)
 	end,
 })
 
@@ -3971,7 +3981,7 @@ Cmd.add({"fullbright", "fulfb", "fb"}, {
 		Lighting.Brightness = 2
 		Lighting.Ambient = Color3.fromRGB(128, 128, 128)
 
-		notify("lucide:sun", 3, "Fullbright", "Fullbright applied.")
+		notify("lucide:sun", 3, "Fullbright", "Fullbright applied.", false)
 	end,
 })
 
@@ -3987,7 +3997,7 @@ Cmd.add({"loopfullbright", "loopfb", "lfb"}, {
 		NnBind.reconnect("loopfb_Brightness", Lighting:GetPropertyChangedSignal("Brightness"):Connect(function() setProp(Lighting, "Brightness", 2) end))
 		NnBind.reconnect("loopfb_Ambient", Lighting:GetPropertyChangedSignal("Ambient"):Connect(function() setProp(Lighting, "Ambient", Color3.fromRGB(128, 128, 128)) end))
 
-		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright enabled.")
+		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright enabled.", true)
 	end,
 })
 
@@ -3998,7 +4008,7 @@ Cmd.add({"unloopfullbright", "unloopfb", "unlfb"}, {
 		NnBind.disconnect("loopfb_Brightness")
 		NnBind.disconnect("loopfb_Ambient")
 
-		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright disabled.")
+		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright disabled.", true)
 	end,
 })
 
@@ -4012,7 +4022,7 @@ Cmd.add({"nofog", "nf"}, {
 				obj.Offset = 0
 			end
 		end
-		notify("lucide:cloud-off", 3, "NoFog", "Fog removed.")
+		notify("lucide:cloud-off", 3, "NoFog", "Fog removed.", false)
 	end,
 })
 
@@ -4038,7 +4048,7 @@ Cmd.add({"loopnofog", "lnofog", "lnf", "loopnf"}, {
 			NnBind.reconnect("loopnofog_AtmOffset", atm:GetPropertyChangedSignal("Offset"):Connect(function() setProp(atm, "Offset", 0) end))
 		end
 
-		notify("lucide:cloud-off", 3, "LoopNoFog", "Loop no fog enabled.")
+		notify("lucide:cloud-off", 3, "LoopNoFog", "Loop no fog enabled.", true)
 	end,
 })
 
@@ -4063,7 +4073,7 @@ Cmd.add({"unloopnofog", "unlnofog", "unlnf", "unloopnf", "unnf"}, {
 		rare.nofog_atmDensity = nil
 		rare.nofog_atmOffset = nil
 
-		notify("lucide:cloud-off", 3, "LoopNoFog", "Loop no fog disabled.")
+		notify("lucide:cloud-off", 3, "LoopNoFog", "Loop no fog disabled.", true)
 	end,
 })
 
@@ -4071,12 +4081,12 @@ Cmd.add({"follow", "stalk", "walk"}, {
 	args = "playername",
 	fn = function(name)
 		if not name then
-			notify("lucide:triangle-alert", 4, "Follow", "No player specified.")
+			notify("lucide:triangle-alert", 4, "Follow", "No player specified.", false)
 			return
 		end
 		local target = select(1, prefixMatch(name))
 		if not target then
-			notify("lucide:user-x", 4, "Follow", "Player not found.")
+			notify("lucide:user-x", 4, "Follow", "Player not found.", false)
 			return
 		end
 
@@ -4094,7 +4104,7 @@ Cmd.add({"follow", "stalk", "walk"}, {
 			hum:MoveTo(targetHRP.Position)
 		end))
 
-		notify("lucide:user-check", 3, "Follow", "Following " .. target.Name .. ".")
+		notify("lucide:user-check", 3, "Follow", "Following " .. target.Name .. ".", true)
 	end,
 })
 
@@ -4105,7 +4115,7 @@ Cmd.add({"unfollow"}, {
 		if playerHum and playerHRP then
 			playerHum:MoveTo(playerHRP.Position)
 		end
-		notify("lucide:user-check", 3, "Follow", "Follow stopped.")
+		notify("lucide:user-check", 3, "Follow", "Follow stopped.", true)
 	end,
 })
 
@@ -4119,7 +4129,7 @@ Cmd.add({"adonisbypass", "bypassadonis", "badonis", "adonisb"}, {
 			local debugInfo = getrenv and getrenv().debug and getrenv().debug.info
 
 			if not (getgc and hookfunction and getrenv and debugInfo) then
-				notify("lucide:shield-off", 3, "Adonis Bypass", "Required exploit functions not available.")
+				notify("lucide:shield-off", 3, "Adonis Bypass", "Required exploit functions not available.", false)
 				return
 			end
 
@@ -4141,7 +4151,7 @@ Cmd.add({"adonisbypass", "bypassadonis", "badonis", "adonisb"}, {
 			end
 
 			if not AdonisFound then
-				notify("lucide:shield-off", 3, "Adonis Bypass", "Adonis not found in this server.")
+				notify("lucide:shield-off", 3, "Adonis Bypass", "Adonis not found in this server.", false)
 				return
 			end
 
@@ -4155,13 +4165,13 @@ Cmd.add({"adonisbypass", "bypassadonis", "badonis", "adonisb"}, {
 						hookfunction(DetectedMeth, function(methodName, methodFunc)
 							return true
 						end)
-						notify("lucide:shield-check", 3, "Adonis Bypass", "Hooked Adonis detection.")
+						notify("lucide:shield-check", 3, "Adonis Bypass", "Hooked Adonis detection.", false)
 					end
 
 					if rawget(value, "Variables") and rawget(value, "Process") and typeof(kill) == "function" and not KillMeth then
 						KillMeth = kill
 						hookfunction(KillMeth, function() end)
-						notify("lucide:shield-check", 3, "Adonis Bypass", "Hooked Adonis kill method.")
+						notify("lucide:shield-check", 3, "Adonis Bypass", "Hooked Adonis kill method.", false)
 					end
 				end
 			end
@@ -4177,8 +4187,315 @@ Cmd.add({"adonisbypass", "bypassadonis", "badonis", "adonisb"}, {
 				end))
 			end
 
-			notify("lucide:shield", 4, "Adonis Bypass", "Bypass active.")
+			notify("lucide:shield", 4, "Adonis Bypass", "Bypass active.", true)
 		end)
+	end,
+})
+
+Cmd.add({"cameranoclip", "camnoclip", "cnoclip", "nccam"}, {
+	fn = function()
+		local SetConstant = execapi.setconstant
+		local GetConstants = execapi.getconstants
+		local HasAdvancedAccess = execapi.getgc and SetConstant and GetConstants
+
+		local function getPopper()
+			local PlayerModule = LocalPlayer:FindFirstChild("PlayerScripts")
+				and LocalPlayer.PlayerScripts:FindFirstChild("PlayerModule")
+			return PlayerModule
+				and PlayerModule:FindFirstChild("CameraModule")
+				and PlayerModule.CameraModule:FindFirstChild("ZoomController")
+				and PlayerModule.CameraModule.ZoomController:FindFirstChild("Popper")
+		end
+
+		local function useAdvancedMode()
+			if not HasAdvancedAccess then return end
+			local Popper = getPopper()
+			if not Popper then return end
+			for _, v in execapi.getgc() do
+				if type(v) == "function" then
+					local ok, env = pcall(getfenv, v)
+					if ok and env and env.script == Popper then
+						for i2, v2 in GetConstants(v) do
+							if tonumber(v2) == 0.25 then
+								SetConstant(v, i2, 0)
+							elseif tonumber(v2) == 0 then
+								SetConstant(v, i2, 0.25)
+							end
+						end
+					end
+				end
+			end
+		end
+
+		local function useInvisCamMode()
+			NnBind.reconnect("camnoclip_invis", LocalPlayer:GetPropertyChangedSignal("DevCameraOcclusionMode"):Connect(function()
+				if LocalPlayer.DevCameraOcclusionMode ~= Enum.DevCameraOcclusionMode.Invisicam then
+					LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+				end
+			end))
+			LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+		end
+
+		if not HasAdvancedAccess then
+			useInvisCamMode()
+			rare.cameranoclipMode = "invis"
+			notify("sfsymbols:camera", 3, "Camera Noclip", "Enabled (Invisicam).", true)
+			return
+		end
+
+		UI.Picker.show({
+			title = "Camera Noclip",
+			subtitle = "Select mode",
+			buttons = {
+				{
+					label = "Invisicam",
+					sub = "DevCameraOcclusionMode",
+					accent = Color3.fromRGB(80, 180, 255),
+					value = "invis",
+				},
+				{
+					label = "Advanced",
+					sub = "Popper getgc tweak",
+					accent = Color3.fromRGB(255, 160, 50),
+					value = "advanced",
+				},
+			},
+		}, function(value)
+			if value == "invis" then
+				useInvisCamMode()
+				rare.cameranoclipMode = "invis"
+				notify("sfsymbols:camera", 3, "Camera Noclip", "Enabled (Invisicam).", true)
+			elseif value == "advanced" then
+				useAdvancedMode()
+				rare.cameranoclipMode = "advanced"
+				notify("sfsymbols:camera", 3, "Camera Noclip", "Enabled (Advanced).", true)
+			end
+		end)
+	end,
+})
+
+Cmd.add({"uncameranoclip", "uncamnoclip", "uncnoclip", "unnccam"}, {
+	fn = function()
+		local SetConstant = execapi.setconstant
+		local GetConstants = execapi.getconstants
+		local HasAdvancedAccess = execapi.getgc and SetConstant and GetConstants
+
+		local mode = rare.cameranoclipMode
+		rare.cameranoclipMode = nil
+
+		if mode == "advanced" and HasAdvancedAccess then
+			local PlayerModule = LocalPlayer:FindFirstChild("PlayerScripts")
+				and LocalPlayer.PlayerScripts:FindFirstChild("PlayerModule")
+			local Popper = PlayerModule
+				and PlayerModule:FindFirstChild("CameraModule")
+				and PlayerModule.CameraModule:FindFirstChild("ZoomController")
+				and PlayerModule.CameraModule.ZoomController:FindFirstChild("Popper")
+
+			if Popper then
+				for _, v in execapi.getgc() do
+					if type(v) == "function" then
+						local ok, env = pcall(getfenv, v)
+						if ok and env and env.script == Popper then
+							for i2, v2 in GetConstants(v) do
+								if tonumber(v2) == 0.25 then
+									SetConstant(v, i2, 0)
+								elseif tonumber(v2) == 0 then
+									SetConstant(v, i2, 0.25)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+
+		NnBind.disconnect("camnoclip_invis")
+		pcall(function()
+			LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
+		end)
+
+		notify("sfsymbols:camera", 3, "Camera Noclip", "Disabled.", true)
+	end,
+})
+
+Cmd.add({"blackhole", "bh"}, {
+	fn = function()
+		if rare.bhActive then
+			notify("sfsymbols:moonFill", 3, "Black Hole", "Already active.", false)
+			return
+		end
+
+		local setSimRadius
+		if type(setsimulationradius) == "function" then
+			setSimRadius = function() setsimulationradius(math.huge) end
+		elseif execapi.sethiddenproperty then
+			setSimRadius = function() execapi.sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge) end
+		else
+			notify("sfsymbols:moonFill", 4, "Black Hole", "Executor does not support SimulationRadius.", false)
+			return
+		end
+
+		rare.bhActive = true
+		rare.bhBringActive = false
+		rare.bhControlActive = false
+
+		local gui = NewInstance("ScreenGui") gui.ResetOnSpawn = false gui.Parent = getGuiParent() rare.bhGui = gui
+		local frame = NewInstance("Frame", gui) frame.Size = UDim2.new(0, 200, 0, 168) frame.Position = UDim2.new(1, -210, 0.5, -84) frame.BackgroundColor3 = Color3.fromRGB(75, 75, 75) frame.BorderSizePixel = 0
+		local title = NewInstance("TextLabel", frame) title.Size = UDim2.new(1, 0, 0, 30) title.BackgroundColor3 = Color3.fromRGB(75, 75, 75) title.BorderSizePixel = 0 title.Text = "Black Hole" title.TextColor3 = Color3.fromRGB(255, 255, 255) title.Font = Enum.Font.GothamBold title.TextScaled = true
+		local btn = NewInstance("TextButton", frame) btn.Size = UDim2.new(1, 0, 0, 38) btn.Position = UDim2.new(0, 0, 0, 38) btn.BackgroundColor3 = Color3.fromRGB(95, 95, 95) btn.BorderSizePixel = 0 btn.Text = "Bring Parts | Off" btn.TextColor3 = Color3.fromRGB(255, 255, 255) btn.Font = Enum.Font.GothamBold btn.TextScaled = true
+		local btn2 = NewInstance("TextButton", frame) btn2.Size = UDim2.new(1, 0, 0, 38) btn2.Position = UDim2.new(0, 0, 0, 84) btn2.BackgroundColor3 = Color3.fromRGB(95, 95, 95) btn2.BorderSizePixel = 0 btn2.Text = "Control Part | Off" btn2.TextColor3 = Color3.fromRGB(255, 255, 255) btn2.Font = Enum.Font.GothamBold btn2.TextScaled = true
+		local btn3 = NewInstance("TextButton", frame) btn3.Size = UDim2.new(1, 0, 0, 38) btn3.Position = UDim2.new(0, 0, 0, 130) btn3.BackgroundColor3 = Color3.fromRGB(95, 95, 95) btn3.BorderSizePixel = 0 btn3.Text = "Reset Position" btn3.TextColor3 = Color3.fromRGB(255, 255, 255) btn3.Font = Enum.Font.GothamBold btn3.TextScaled = true
+
+		local dragging, dragStart, startPos = false, nil, nil
+		title.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true dragStart = input.Position startPos = frame.Position
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then dragging = false end
+				end)
+			end
+		end)
+		NnBind.reconnect("bh_drag", UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local delta = input.Position - dragStart
+				local vp = gui.AbsoluteSize local fs = frame.AbsoluteSize
+				frame.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, vp.X - fs.X), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - fs.Y))
+			end
+		end))
+
+		local bh = NewInstance("Model") bh.Name = "BlackHole" bh.Parent = workspace rare.bhModel = bh
+		local bh_core = NewInstance("Part") bh_core.Name = "Core" bh_core.Shape = Enum.PartType.Ball bh_core.Size = Vector3.new(6, 6, 6) bh_core.Anchored = true bh_core.CanCollide = false bh_core.Material = Enum.Material.SmoothPlastic bh_core.Color = Color3.new(0, 0, 0) bh_core.Parent = bh
+		local bh_glow = NewInstance("Part") bh_glow.Name = "GlowShell" bh_glow.Shape = Enum.PartType.Ball bh_glow.Size = Vector3.new(6.4, 6.4, 6.4) bh_glow.CFrame = bh_core.CFrame bh_glow.Anchored = false bh_glow.CanCollide = false bh_glow.Material = Enum.Material.Neon bh_glow.Color = Color3.fromRGB(90, 40, 160) bh_glow.Transparency = 0.9 bh_glow.Parent = bh
+		local bh_weld = NewInstance("WeldConstraint") bh_weld.Part0 = bh_core bh_weld.Part1 = bh_glow bh_weld.Parent = bh_core
+		local bh_light = NewInstance("PointLight") bh_light.Color = Color3.fromRGB(150, 90, 255) bh_light.Brightness = 2 bh_light.Range = 40 bh_light.Parent = bh_core
+		bh.PrimaryPart = bh_core bh:PivotTo(CFrame.new(playerHRP.Position + playerHRP.CFrame.LookVector * 30 + Vector3.new(0, 20, 0)))
+
+		local anchor = bh_core
+		local anchorAtt = NewInstance("Attachment", anchor)
+		local weldPart = {}
+
+		local function ForcePart(v)
+			local char = playerChar
+			if v:IsA("BasePart") and not v.Anchored
+				and not (char and v:IsDescendantOf(char))
+				and not v.Parent:FindFirstChildOfClass("Humanoid")
+				and not v.Parent:FindFirstChild("Head")
+				and v.Name ~= "Handle"
+			then
+				if v:FindFirstChildOfClass("WeldConstraint") or v:FindFirstChildOfClass("Weld") then
+					if not weldPart[v] then
+						weldPart[v] = true
+						v.ChildRemoved:Connect(function(child)
+							if child:IsA("WeldConstraint") or child:IsA("Weld") then
+								if not v:FindFirstChildOfClass("WeldConstraint") and not v:FindFirstChildOfClass("Weld") then
+									weldPart[v] = nil
+									ForcePart(v)
+								end
+							end
+						end)
+					end
+					return
+				end
+				if v:FindFirstChild("AlignPosition") then return end
+				for _, x in ipairs(v:GetChildren()) do
+					if x:IsA("BodyMover") or x:IsA("RocketPropulsion") then x:Destroy() end
+				end
+				v.CanCollide = false
+				local partAtt = NewInstance("Attachment", v)
+				local torque = NewInstance("Torque", v) torque.Attachment0 = partAtt torque.Torque = Vector3.new(100000, 100000, 100000)
+				local align = NewInstance("AlignPosition", v) align.MaxForce = math.huge align.MaxVelocity = math.huge align.Responsiveness = 200 align.Attachment0 = partAtt align.Attachment1 = anchorAtt
+			end
+		end
+
+		NnBind.reconnect("bh_charAdded", CharacterAdded:Connect(function()
+			CharacterCached:Wait()
+			if rare.bhControlActive and playerHRP then playerHRP.Anchored = true end
+		end))
+
+		LocalPlayer.ReplicationFocus = workspace
+
+		NnBind.reconnect("bh_heartbeat", RunService.Heartbeat:Connect(function()
+			setSimRadius()
+		end))
+
+		NnBind.reconnect("bh_renderStepped", RunService.RenderStepped:Connect(function(dt)
+			if not rare.bhControlActive then return end
+			local mv = Controls:GetMoveVector()
+			local move = (Camera.CFrame.LookVector * -mv.Z) + (Camera.CFrame.RightVector * mv.X)
+			if move.Magnitude > 0 then anchor.CFrame = anchor.CFrame + move * (120 * dt) end
+		end))
+
+		btn.MouseButton1Click:Connect(function()
+			rare.bhBringActive = not rare.bhBringActive
+			if rare.bhBringActive then
+				btn.Text = "Bring Parts | On"
+				for _, v in ipairs(workspace:GetDescendants()) do ForcePart(v) end
+				NnBind.reconnect("bh_descendantAdded", workspace.DescendantAdded:Connect(function(v)
+					if rare.bhBringActive then ForcePart(v) end
+				end))
+			else
+				btn.Text = "Bring Parts | Off"
+				NnBind.disconnect("bh_descendantAdded")
+				for _, v in ipairs(workspace:GetDescendants()) do
+					if v:IsA("BasePart") and v ~= anchor then
+						local ap = v:FindFirstChild("AlignPosition")
+						local tq = v:FindFirstChild("Torque")
+						local at = v:FindFirstChild("Attachment")
+						if ap then ap:Destroy() end
+						if tq then tq:Destroy() end
+						if at then at:Destroy() end
+					end
+				end
+			end
+		end)
+
+		btn2.MouseButton1Click:Connect(function()
+			rare.bhControlActive = not rare.bhControlActive
+			if rare.bhControlActive then
+				btn2.Text = "Control Part | On"
+				if playerHRP then playerHRP.Anchored = true end
+				Camera.CameraType = Enum.CameraType.Custom
+				Camera.CameraSubject = anchor
+			else
+				btn2.Text = "Control Part | Off"
+				if playerHRP then playerHRP.Anchored = false end
+				Camera.CameraSubject = playerHum
+				Camera.CameraType = Enum.CameraType.Custom
+			end
+		end)
+
+		btn3.MouseButton1Click:Connect(function()
+			if playerHRP then anchor.CFrame = playerHRP.CFrame * CFrame.new(0, 10, -20) end
+		end)
+
+		notify("sfsymbols:moonFill", 3, "Black Hole", "Enabled.", true)
+	end,
+})
+
+Cmd.add({"unblackhole", "unbh"}, {
+	fn = function()
+		if not rare.bhActive then return end
+
+		NnBind.disconnect("bh_drag")
+		NnBind.disconnect("bh_charAdded")
+		NnBind.disconnect("bh_heartbeat")
+		NnBind.disconnect("bh_renderStepped")
+		NnBind.disconnect("bh_descendantAdded")
+
+		if rare.bhControlActive then
+			if playerHRP then playerHRP.Anchored = false end
+			Camera.CameraSubject = playerHum
+			Camera.CameraType = Enum.CameraType.Custom
+		end
+
+		if rare.bhModel then rare.bhModel:Destroy() rare.bhModel = nil end
+		if rare.bhGui then rare.bhGui:Destroy() rare.bhGui = nil end
+
+		rare.bhActive = false
+		rare.bhBringActive = false
+		rare.bhControlActive = false
+
+		notify("sfsymbols:moonFill", 3, "Black Hole", "Disabled.", true)
 	end,
 })
 
@@ -4199,6 +4516,14 @@ UI.Settings.input(rare.generalPage, "Command Prefix", "e.g. ;", rare.cmdPrefix, 
 		rare.cmdPrefix = val:sub(1, 1)
 		func.persist.saveSettings()
 	end
+end)
+UI.Settings.toggle(rare.generalPage, "Debug Notification", function(v)
+	rare.debugNotif = v
+	func.persist.saveSettings()
+end)
+UI.Settings.toggle(rare.generalPage, "Disable Noise Notification", function(v)
+	rare.disableNoiseNotif = v
+	func.persist.saveSettings()
 end)
 
 UI.Settings.section(rare.generalPage, "Ignore Team")
