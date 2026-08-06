@@ -320,9 +320,9 @@ function UI.buildValueRow(frame, speed, placeholder, tw, onValueChanged)
 end
 local buildValueRow = UI.buildValueRow
 
-function UI.HUD.makeButton(label, startFn, yOff, placeholder, defaultSpd)
-	local hasValue = placeholder ~= nil and defaultSpd ~= nil
-	local speed = defaultSpd
+function UI.HUD.makeButton(label, startFn, yOff, placeholder, defaultValue)
+	local hasValue = placeholder ~= nil and defaultValue ~= nil
+	local speed = defaultValue
 	local tw = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
 	local frame, stroke, nameLabel
 	local built = false
@@ -405,10 +405,10 @@ function UI.HUD.makeButton(label, startFn, yOff, placeholder, defaultSpd)
 	}
 end
 
-function UI.HUD.makeToggle(startFn, stopFn, yOff, placeholder, defaultSpd, labelOn, labelOff)
-	local hasValue = placeholder ~= nil and defaultSpd ~= nil
+function UI.HUD.makeToggle(startFn, stopFn, yOff, placeholder, defaultValue, labelOn, labelOff)
+	local hasValue = placeholder ~= nil and defaultValue ~= nil
 	local active = false
-	local speed = defaultSpd
+	local speed = defaultValue
 	local tw = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
 	local frame, stroke, nameLabel, speedLabelRef, inputBoxRef
 	local built = false
