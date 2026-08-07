@@ -258,16 +258,18 @@ UI.HUD.sg = hudSg
 UI.registerScaleTarget(hudSg)
 
 function UI.buildValueRow(frame, speed, placeholder, tw, onValueChanged)
-	local speedLabel = NewInstance("TextLabel", frame)
-	speedLabel.Size = UDim2.new(0, 36, 0, 44)
-	speedLabel.Position = UDim2.new(1, -60, 0, 0)
-	speedLabel.BackgroundTransparency = 1
-	speedLabel.Text = tostring(speed)
-	speedLabel.TextColor3 = Color3.fromRGB(140, 140, 140)
-	speedLabel.Font = Enum.Font.GothamBold
-	speedLabel.TextSize = 11
-	speedLabel.TextXAlignment = Enum.TextXAlignment.Center
-	speedLabel.TextYAlignment = Enum.TextYAlignment.Center
+	local valueLabel = NewInstance("TextLabel", frame)
+	valueLabel.Size = UDim2.new(0, 36, 0, 44)
+	valueLabel.Position = UDim2.new(1, -60, 0, 0)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.Text = tostring(speed)
+	valueLabel.TextColor3 = Color3.fromRGB(140, 140, 140)
+	valueLabel.Font = Enum.Font.GothamBold
+	valueLabel.TextSize = 11
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+	valueLabel.TextYAlignment = Enum.TextYAlignment.Center
+	valueLabel.TextWrapped = false
+	valueLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	local toggleBtn = NewInstance("TextButton", frame)
 	toggleBtn.Size = UDim2.new(0, 22, 0, 22)
 	toggleBtn.Position = UDim2.new(1, -26, 0, 11)
@@ -312,11 +314,11 @@ function UI.buildValueRow(frame, speed, placeholder, tw, onValueChanged)
 	inputBox2.FocusLost:Connect(function()
 		local n = tonumber(inputBox2.Text)
 		local v = n or inputBox2.Text
-		speedLabel.Text = tostring(v)
+		valueLabel.Text = tostring(v)
 		inputBox2.Text = tostring(v)
 		onValueChanged(v)
 	end)
-	return toggleBtn, speedLabel, inputBox2, setExpanded, function() return expanded end
+	return toggleBtn, valueLabel, inputBox2, setExpanded, function() return expanded end
 end
 local buildValueRow = UI.buildValueRow
 
@@ -410,7 +412,7 @@ function UI.HUD.makeToggle(startFn, stopFn, yOff, placeholder, defaultValue, lab
 	local active = false
 	local speed = defaultValue
 	local tw = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
-	local frame, stroke, nameLabel, speedLabelRef, inputBoxRef
+	local frame, stroke, nameLabel, valueLabelRef, inputBoxRef
 	local built = false
 	local setExpanded, getExpanded
 	local function build()
@@ -443,7 +445,7 @@ function UI.HUD.makeToggle(startFn, stopFn, yOff, placeholder, defaultValue, lab
 				speed = v
 				if active then startFn(speed) end
 			end)
-			speedLabelRef = sLabel
+			valueLabelRef = sLabel
 			inputBoxRef = iBox
 			setExpanded = sExp
 			getExpanded = gExp
@@ -495,7 +497,7 @@ function UI.HUD.makeToggle(startFn, stopFn, yOff, placeholder, defaultValue, lab
 			build()
 			if hasValue and spd then
 				speed = tonumber(spd) or spd
-				if speedLabelRef then speedLabelRef.Text = tostring(speed) end
+				if valueLabelRef then valueLabelRef.Text = tostring(speed) end
 				if inputBoxRef then inputBoxRef.Text = tostring(speed) end
 			end
 			active = true
