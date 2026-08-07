@@ -136,7 +136,7 @@ local execapi = {
 	isfolder = type(isfolder) == "function" and isfolder or nil,
 	makefolder = type(makefolder) == "function" and makefolder or nil,
 	sethiddenproperty = (type(sethiddenproperty) == "function" and sethiddenproperty) or (type(set_hidden_property) == "function" and set_hidden_property) or (type(set_hidden_prop) == "function" and set_hidden_prop) or nil,
-	clipboard = type(setclipboard) == "function" and setclipboard or type(toclipboard) == "function" and toclipboard or type(set_clipboard) == "function" and set_clipboard,
+	clipboard = type(setclipboard) == "function" and setclipboard or type(toclipboard) == "function" and toclipboard or type(set_clipboard) == "function" and set_clipboard or nil,
 	setfpscap = type(setfpscap) == "function" and setfpscap or nil,
 	hookmetamethod = type(hookmetamethod) == "function" and hookmetamethod or nil,
 	hookfunction = (type(hookfunction) == "function" and hookfunction) or (type(replaceclosure) == "function" and replaceclosure) or (type(replacefunction) == "function" and replacefunction) or (type(hookfunc) == "function" and hookfunc) or (type(replacefunc) == "function" and replacefunc) or (type(detourfunction) == "function" and detourfunction) or (type(detour_function) == "function" and detour_function) or nil,
@@ -505,19 +505,21 @@ local function spawnHud(btnData)
 	end
 	if unEntry and unEntry.fn then
 		local ph = getArgPh(entry)
-		local defVal = argDefault or entry.hudDefault or nil
+		local defVal = argDefault or entry.hudDefault
+		local displayVal = defVal ~= nil and defVal or (ph and ph ~= "" and "") or nil
 		hud = makeToggleHUD(
-			function(v) entry.fn(v or argDefault) end,
+			function(v) entry.fn((v and v ~= "" and v) or argDefault) end,
 			unEntry.fn,
-			hudYOffset, ph, defVal, label, label)
-		hud.height = (ph and defVal) and 80 or 50
+			hudYOffset, ph, displayVal, label, label)
+		hud.height = displayVal ~= nil and 80 or 50
 	else
 		local ph = getArgPh(entry)
-		local defVal = argDefault or entry.hudDefault or nil
+		local defVal = argDefault or entry.hudDefault
+		local displayVal = defVal ~= nil and defVal or (ph and ph ~= "" and "") or nil
 		hud = makeButtonHUD(label,
-			function(v) entry.fn(v or argDefault) end,
-			hudYOffset, ph, defVal)
-		hud.height = (ph and defVal) and 80 or 50
+			function(v) entry.fn((v and v ~= "" and v) or argDefault) end,
+			hudYOffset, ph, displayVal)
+		hud.height = displayVal ~= nil and 80 or 50
 	end
 	hudYOffset += hud.height
 	hud.showOff()
