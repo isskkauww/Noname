@@ -89,7 +89,7 @@ local function getGuiParent()
 end
 
 local function makeDraggable(frame, handle)
-	frame = frame or handle
+	handle = handle or frame
 
 	local connections = {}
 
