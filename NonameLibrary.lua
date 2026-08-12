@@ -1,4 +1,4 @@
-local cloneref = type(cloneref) == "function" and cloneref or function(x) return x end
+local cloneref = (type(cloneref) == "function" and cloneref) or (type(clonereference) == "function" and clonereference) or function(x) return x end
 local TweenService = cloneref(game:GetService("TweenService"))
 local UserInputService = cloneref(game:GetService("UserInputService"))
 local GuiService = cloneref(game:GetService("GuiService"))
@@ -364,43 +364,34 @@ local function setupCollapsible(arrow, clipper, getOpenHeight, defaultOpen)
 	end
 end
 
-local function makeDraggable(handle, target)
+local function makeDraggable(handle, frame)
+	frame = frame or handle
+
 	local connections = {}
-	local dragging = false
+
+	local dragInput = nil
 	local dragStart = nil
 	local startPos = nil
 	local startAbsPos = nil
 	local screenGui = nil
 
-	local inputBeganConnection = handle.InputBegan:Connect(function(input)
-		local isPrimary = input.UserInputType == Enum.UserInputType.MouseButton1
-		local isTouch = input.UserInputType == Enum.UserInputType.Touch
-		if isPrimary or isTouch then
-			dragging = true
+	connections[#connections + 1] = handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
 			dragStart = input.Position
-			startPos = target.Position
-			startAbsPos = target.AbsolutePosition
+			startPos = frame.Position
+			startAbsPos = frame.AbsolutePosition
 
-			screenGui = target
+			screenGui = frame
 			while screenGui and not screenGui:IsA("ScreenGui") do
 				screenGui = screenGui.Parent
 			end
-
-			local changedConnection
-			changedConnection = input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					dragging = false
-					changedConnection:Disconnect()
-				end
-			end)
 		end
 	end)
-	table.insert(connections, inputBeganConnection)
 
-	local inputChangedConnection = UserInputService.InputChanged:Connect(function(input)
-		local isMouse = input.UserInputType == Enum.UserInputType.MouseMovement
-		local isTouch = input.UserInputType == Enum.UserInputType.Touch
-		if dragging and (isMouse or isTouch) then
+	connections[#connections + 1] = handle.InputChanged:Connect(function(input)
+		if dragInput and input == dragInput then
 			local delta = input.Position - dragStart
 			local desiredAbsX = startAbsPos.X + delta.X
 			local desiredAbsY = startAbsPos.Y + delta.Y
@@ -409,30 +400,16 @@ local function makeDraggable(handle, target)
 			local topLeftInset = GuiService:GetGuiInset()
 
 			local minX, minY = 0, 0
-			local maxX, maxY = viewportSize.X, viewportSize.Y
+			local maxX = viewportSize.X - frame.AbsoluteSize.X
+			local maxY = viewportSize.Y - frame.AbsoluteSize.Y
 			if not (screenGui and screenGui.IgnoreGuiInset) then
 				minY = -topLeftInset.Y
 			end
 
-			local size = target.AbsoluteSize
-			maxX = maxX - size.X
-			maxY = maxY - size.Y
+			local clampedAbsX = (minX > maxX) and minX or math.clamp(desiredAbsX, minX, maxX)
+			local clampedAbsY = (minY > maxY) and minY or math.clamp(desiredAbsY, minY, maxY)
 
-			local clampedAbsX = desiredAbsX
-			if minX > maxX then
-				clampedAbsX = minX
-			else
-				clampedAbsX = math.clamp(desiredAbsX, minX, maxX)
-			end
-
-			local clampedAbsY = desiredAbsY
-			if minY > maxY then
-				clampedAbsY = minY
-			else
-				clampedAbsY = math.clamp(desiredAbsY, minY, maxY)
-			end
-
-			target.Position = UDim2.new(
+			frame.Position = UDim2.new(
 				startPos.X.Scale,
 				startPos.X.Offset + (clampedAbsX - startAbsPos.X),
 				startPos.Y.Scale,
@@ -440,7 +417,12 @@ local function makeDraggable(handle, target)
 			)
 		end
 	end)
-	table.insert(connections, inputChangedConnection)
+
+	connections[#connections + 1] = UserInputService.InputEnded:Connect(function(input)
+		if input == dragInput then
+			dragInput = nil
+		end
+	end)
 
 	return connections
 end
@@ -1207,7 +1189,7 @@ function Tab:Button(config)
 	buttonStroke.Thickness = 1
 	buttonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-	local buttonIconSize = 16
+	local buttonIconSize = 32
 	local buttonIcon = CreateIcon(btn, config.Icon, UDim2.new(0, buttonIconSize, 0, buttonIconSize))
 	local hasIcon = buttonIcon ~= nil
 	if hasIcon then
@@ -1343,6 +1325,11 @@ function Tab:Button(config)
 		end
 
 		btn.Size = UDim2.new(1, 0, 0, 44)
+		if hasIcon then
+			buttonIconSize = 32
+			buttonIcon.Size = UDim2.new(0, buttonIconSize, 0, buttonIconSize)
+			buttonLeftPad = 12 + buttonIconSize + 8
+		end
 		titleLabelRef.Position = UDim2.new(0, buttonLeftPad, 0, 6)
 		titleLabelRef.Size = UDim2.new(1, -(buttonLeftPad + 12), 0, 18)
 
@@ -1880,6 +1867,18 @@ function Tab:ColorPicker(config)
 	containerStroke.Thickness = 1
 	containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+	local colorPickerIconSize = 32
+	local colorPickerIcon = CreateIcon(container, config.Icon, UDim2.new(0, colorPickerIconSize, 0, colorPickerIconSize))
+	local hasColorPickerIcon = colorPickerIcon ~= nil
+	if hasColorPickerIcon then
+		colorPickerIcon.AnchorPoint = Vector2.new(0, 0.5)
+		colorPickerIcon.Position = UDim2.new(0, 12, 0.5, 0)
+	end
+	local colorPickerLeftPad = 12
+	if hasColorPickerIcon then
+		colorPickerLeftPad = 12 + colorPickerIconSize + 8
+	end
+
 	local nameLabel = NewInstance("TextLabel", container)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Font = Enum.Font.GothamMedium
@@ -1889,19 +1888,19 @@ function Tab:ColorPicker(config)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	if hasDesc then
-		nameLabel.Position = UDim2.new(0, 12, 0, 6)
-		nameLabel.Size = UDim2.new(1, -60, 0, 18)
+		nameLabel.Position = UDim2.new(0, colorPickerLeftPad, 0, 6)
+		nameLabel.Size = UDim2.new(1, -(colorPickerLeftPad + 48), 0, 18)
 	else
-		nameLabel.Position = UDim2.new(0, 12, 0, 0)
-		nameLabel.Size = UDim2.new(1, -60, 1, 0)
+		nameLabel.Position = UDim2.new(0, colorPickerLeftPad, 0, 0)
+		nameLabel.Size = UDim2.new(1, -(colorPickerLeftPad + 48), 1, 0)
 	end
 
 	local descLabel
 	if hasDesc then
 		descLabel = NewInstance("TextLabel", container)
 		descLabel.BackgroundTransparency = 1
-		descLabel.Position = UDim2.new(0, 12, 0, 24)
-		descLabel.Size = UDim2.new(1, -60, 0, 14)
+		descLabel.Position = UDim2.new(0, colorPickerLeftPad, 0, 24)
+		descLabel.Size = UDim2.new(1, -(colorPickerLeftPad + 48), 0, 14)
 		descLabel.Font = Enum.Font.Gotham
 		descLabel.Text = descText
 		descLabel.TextSize = 12
@@ -2522,13 +2521,19 @@ function Tab:ColorPicker(config)
 		end
 
 		container.Size = UDim2.new(1, 0, 0, 44)
-		nameLabel.Position = UDim2.new(0, 12, 0, 6)
-		nameLabel.Size = UDim2.new(1, -60, 0, 18)
+		if hasColorPickerIcon then
+			colorPickerIconSize = 32
+			colorPickerIcon.Size = UDim2.new(0, colorPickerIconSize, 0, colorPickerIconSize)
+			colorPickerIcon.Position = UDim2.new(0, 12, 0.5, 0)
+			colorPickerLeftPad = 12 + colorPickerIconSize + 8
+		end
+		nameLabel.Position = UDim2.new(0, colorPickerLeftPad, 0, 6)
+		nameLabel.Size = UDim2.new(1, -(colorPickerLeftPad + 48), 0, 18)
 
 		descLabel = NewInstance("TextLabel", container)
 		descLabel.BackgroundTransparency = 1
-		descLabel.Position = UDim2.new(0, 12, 0, 24)
-		descLabel.Size = UDim2.new(1, -60, 0, 14)
+		descLabel.Position = UDim2.new(0, colorPickerLeftPad, 0, 24)
+		descLabel.Size = UDim2.new(1, -(colorPickerLeftPad + 48), 0, 14)
 		descLabel.Font = Enum.Font.Gotham
 		descLabel.Text = text
 		descLabel.TextSize = 12
@@ -2607,6 +2612,18 @@ function Tab:Textbox(config)
 	containerStroke.Thickness = 1
 	containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+	local textboxIconSize = 32
+	local textboxIcon = CreateIcon(container, config.Icon, UDim2.new(0, textboxIconSize, 0, textboxIconSize))
+	local hasTextboxIcon = textboxIcon ~= nil
+	if hasTextboxIcon then
+		textboxIcon.AnchorPoint = Vector2.new(0, 0.5)
+		textboxIcon.Position = UDim2.new(0, 12, 0.5, 0)
+	end
+	local textboxLeftPad = 12
+	if hasTextboxIcon then
+		textboxLeftPad = 12 + textboxIconSize + 8
+	end
+
 	local nameLabel = NewInstance("TextLabel", container)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Font = Enum.Font.GothamMedium
@@ -2616,19 +2633,19 @@ function Tab:Textbox(config)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	if hasDesc then
-		nameLabel.Position = UDim2.new(0, 12, 0, 6)
-		nameLabel.Size = UDim2.new(1, -178, 0, 18)
+		nameLabel.Position = UDim2.new(0, textboxLeftPad, 0, 6)
+		nameLabel.Size = UDim2.new(1, -(textboxLeftPad + 166), 0, 18)
 	else
-		nameLabel.Position = UDim2.new(0, 12, 0, 0)
-		nameLabel.Size = UDim2.new(1, -178, 1, 0)
+		nameLabel.Position = UDim2.new(0, textboxLeftPad, 0, 0)
+		nameLabel.Size = UDim2.new(1, -(textboxLeftPad + 166), 1, 0)
 	end
 
 	local descLabel
 	if hasDesc then
 		descLabel = NewInstance("TextLabel", container)
 		descLabel.BackgroundTransparency = 1
-		descLabel.Position = UDim2.new(0, 12, 0, 24)
-		descLabel.Size = UDim2.new(1, -178, 0, 14)
+		descLabel.Position = UDim2.new(0, textboxLeftPad, 0, 24)
+		descLabel.Size = UDim2.new(1, -(textboxLeftPad + 166), 0, 14)
 		descLabel.Font = Enum.Font.Gotham
 		descLabel.Text = descText
 		descLabel.TextSize = 12
@@ -2711,13 +2728,19 @@ function Tab:Textbox(config)
 		end
 
 		container.Size = UDim2.new(1, 0, 0, 44)
-		nameLabel.Position = UDim2.new(0, 12, 0, 6)
-		nameLabel.Size = UDim2.new(1, -178, 0, 18)
+		if hasTextboxIcon then
+			textboxIconSize = 32
+			textboxIcon.Size = UDim2.new(0, textboxIconSize, 0, textboxIconSize)
+			textboxIcon.Position = UDim2.new(0, 12, 0.5, 0)
+			textboxLeftPad = 12 + textboxIconSize + 8
+		end
+		nameLabel.Position = UDim2.new(0, textboxLeftPad, 0, 6)
+		nameLabel.Size = UDim2.new(1, -(textboxLeftPad + 166), 0, 18)
 
 		descLabel = NewInstance("TextLabel", container)
 		descLabel.BackgroundTransparency = 1
-		descLabel.Position = UDim2.new(0, 12, 0, 24)
-		descLabel.Size = UDim2.new(1, -178, 0, 14)
+		descLabel.Position = UDim2.new(0, textboxLeftPad, 0, 24)
+		descLabel.Size = UDim2.new(1, -(textboxLeftPad + 166), 0, 14)
 		descLabel.Font = Enum.Font.Gotham
 		descLabel.Text = text
 		descLabel.TextSize = 12
@@ -2917,16 +2940,12 @@ function Tab:Dropdown(config)
 	containerStroke.Thickness = 1
 	containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-	local dropdownIconSize = 16
+	local dropdownIconSize = 32
 	local dropdownIcon = CreateIcon(container, config.Icon, UDim2.new(0, dropdownIconSize, 0, dropdownIconSize))
 	local hasDropdownIcon = dropdownIcon ~= nil
 	if hasDropdownIcon then
 		dropdownIcon.AnchorPoint = Vector2.new(0, 0.5)
-		if hasDesc then
-			dropdownIcon.Position = UDim2.new(0, 12, 0, 15)
-		else
-			dropdownIcon.Position = UDim2.new(0, 12, 0.5, 0)
-		end
+		dropdownIcon.Position = UDim2.new(0, 12, 0.5, 0)
 	end
 	local dropdownLeftPad = 12
 	if hasDropdownIcon then
@@ -3497,11 +3516,14 @@ function Tab:Dropdown(config)
 		end
 
 		container.Size = UDim2.new(1, 0, 0, 44)
+		if hasDropdownIcon then
+			dropdownIconSize = 32
+			dropdownIcon.Size = UDim2.new(0, dropdownIconSize, 0, dropdownIconSize)
+			dropdownIcon.Position = UDim2.new(0, 12, 0.5, 0)
+			dropdownLeftPad = 12 + dropdownIconSize + 8
+		end
 		nameLabel.Position = UDim2.new(0, dropdownLeftPad, 0, 6)
 		nameLabel.Size = UDim2.new(1, -(dropdownLeftPad + 188), 0, 18)
-		if hasDropdownIcon then
-			dropdownIcon.Position = UDim2.new(0, 12, 0, 15)
-		end
 
 		descLabel = NewInstance("TextLabel", container)
 		descLabel.BackgroundTransparency = 1
@@ -3556,6 +3578,313 @@ function Tab:Dropdown(config)
 	end
 
 	return MakeCaseInsensitive(Dropdown)
+end
+
+function Tab:Keybind(config)
+	config = MakeCaseInsensitive(config)
+	config = config or {}
+	local callback = config.Callback or function() end
+	local mode = config.Mode
+	if mode ~= "Toggle" then mode = "Hold" end
+	local descText = config.Desc or config.Description
+	local hasDesc = descText ~= nil and descText ~= ""
+
+	local function ResolveKeybindInput(input)
+		if typeof(input) ~= "EnumItem" then
+			return nil
+		end
+		if input.EnumType == Enum.KeyCode then
+			return input
+		end
+		if input.EnumType == Enum.UserInputType
+			and (input == Enum.UserInputType.MouseButton2 or input == Enum.UserInputType.MouseButton3) then
+			return input
+		end
+		return nil
+	end
+
+	local boundInput = ResolveKeybindInput(config.Default)
+
+	self.elementOrder = self.elementOrder + 1
+
+	local container = NewInstance("Frame", self.holder)
+	container.BackgroundColor3 = Theme.ElementBackground
+	container.BorderSizePixel = 0
+	container.Size = UDim2.new(1, 0, 0, hasDesc and 44 or 36)
+	container.LayoutOrder = self.elementOrder
+
+	local containerCorner = NewInstance("UICorner", container)
+	containerCorner.CornerRadius = UDim.new(0, 6)
+
+	local containerStroke = NewInstance("UIStroke", container)
+	containerStroke.Color = Theme.ElementStroke
+	containerStroke.Thickness = 1
+	containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+	local keybindIconSize = 32
+	local keybindIcon = CreateIcon(container, config.Icon, UDim2.new(0, keybindIconSize, 0, keybindIconSize))
+	local hasKeybindIcon = keybindIcon ~= nil
+	if hasKeybindIcon then
+		keybindIcon.AnchorPoint = Vector2.new(0, 0.5)
+		keybindIcon.Position = UDim2.new(0, 12, 0.5, 0)
+	end
+	local keybindLeftPad = 12
+	if hasKeybindIcon then
+		keybindLeftPad = 12 + keybindIconSize + 8
+	end
+
+	local nameLabel = NewInstance("TextLabel", container)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Font = Enum.Font.GothamMedium
+	nameLabel.Text = config.Name or "Keybind"
+	nameLabel.TextSize = 14
+	nameLabel.TextColor3 = Theme.TextPrimary
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	if hasDesc then
+		nameLabel.Position = UDim2.new(0, keybindLeftPad, 0, 6)
+		nameLabel.Size = UDim2.new(1, -(keybindLeftPad + 88), 0, 18)
+	else
+		nameLabel.Position = UDim2.new(0, keybindLeftPad, 0, 0)
+		nameLabel.Size = UDim2.new(1, -(keybindLeftPad + 88), 1, 0)
+	end
+
+	local descLabel
+	if hasDesc then
+		descLabel = NewInstance("TextLabel", container)
+		descLabel.BackgroundTransparency = 1
+		descLabel.Position = UDim2.new(0, keybindLeftPad, 0, 24)
+		descLabel.Size = UDim2.new(1, -(keybindLeftPad + 88), 0, 14)
+		descLabel.Font = Enum.Font.Gotham
+		descLabel.Text = descText
+		descLabel.TextSize = 12
+		descLabel.TextColor3 = Theme.TextPrimary
+		descLabel.TextTransparency = 0.3
+		descLabel.TextXAlignment = Enum.TextXAlignment.Left
+		descLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	end
+
+	local locked = false
+	local lockUi = nil
+
+	CreateTooltip(self.window, container, config.Tooltip)
+
+	local keyBtn = NewInstance("TextButton", container)
+	keyBtn.BackgroundColor3 = Theme.SwitchOff
+	keyBtn.BorderSizePixel = 0
+	keyBtn.AutoButtonColor = false
+	keyBtn.Size = UDim2.new(0, 78, 0, 22)
+	keyBtn.AnchorPoint = Vector2.new(1, 0.5)
+	keyBtn.Position = UDim2.new(1, -12, 0.5, 0)
+	keyBtn.Font = Enum.Font.GothamMedium
+	keyBtn.TextSize = 12
+	keyBtn.TextColor3 = Theme.TextPrimary
+	keyBtn.TextTruncate = Enum.TextTruncate.AtEnd
+	local keyBtnCorner = NewInstance("UICorner", keyBtn)
+	keyBtnCorner.CornerRadius = UDim.new(0, 6)
+
+	local keyBtnStroke = NewInstance("UIStroke", keyBtn)
+	keyBtnStroke.Color = Theme.ElementStroke
+	keyBtnStroke.Thickness = 1
+	keyBtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+	local listening = false
+	local state = false
+
+	local function refreshKeyText()
+		if listening then
+			keyBtn.Text = "..."
+		elseif boundInput == nil then
+			keyBtn.Text = "None"
+		elseif boundInput.EnumType == Enum.KeyCode then
+			keyBtn.Text = boundInput.Name
+		elseif boundInput == Enum.UserInputType.MouseButton2 then
+			keyBtn.Text = "Mouse2"
+		else
+			keyBtn.Text = "Mouse3"
+		end
+	end
+
+	refreshKeyText()
+
+	local function stopListening()
+		if not listening then return end
+		listening = false
+		tween(keyBtnStroke, {Color = Theme.ElementStroke}, 0.15)
+		refreshKeyText()
+	end
+
+	local function startListening()
+		if locked or listening then return end
+		listening = true
+		tween(keyBtnStroke, {Color = Theme.Accent}, 0.15)
+		refreshKeyText()
+	end
+
+	keyBtn.Activated:Connect(function()
+		if locked then return end
+		if listening then
+			stopListening()
+		else
+			startListening()
+		end
+	end)
+
+	local captureConnection = UserInputService.InputBegan:Connect(function(input)
+		if not listening then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then return end
+
+		if input.KeyCode == Enum.KeyCode.Escape then
+			stopListening()
+			return
+		end
+
+		if input.KeyCode == Enum.KeyCode.Backspace then
+			boundInput = nil
+			stopListening()
+			return
+		end
+
+		local resolved
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			resolved = ResolveKeybindInput(input.KeyCode)
+		else
+			resolved = ResolveKeybindInput(input.UserInputType)
+		end
+		if not resolved then return end
+
+		boundInput = resolved
+		stopListening()
+	end)
+	table.insert(self.window.connections, captureConnection)
+
+	local pressConnection = UserInputService.InputBegan:Connect(function(input)
+		if locked or listening or not boundInput then return end
+		if UserInputService:GetFocusedTextBox() then return end
+
+		local matches = (input.KeyCode == boundInput) or (input.UserInputType == boundInput)
+		if not matches then return end
+
+		if mode == "Toggle" then
+			state = not state
+			callback(state)
+		elseif not state then
+			state = true
+			callback(state)
+		end
+	end)
+	table.insert(self.window.connections, pressConnection)
+
+	local releaseConnection = UserInputService.InputEnded:Connect(function(input)
+		if mode ~= "Hold" or locked or not boundInput or not state then return end
+
+		local matches = (input.KeyCode == boundInput) or (input.UserInputType == boundInput)
+		if not matches then return end
+
+		state = false
+		callback(state)
+	end)
+	table.insert(self.window.connections, releaseConnection)
+
+	keyBtn.MouseEnter:Connect(function()
+		if locked then return end
+		tween(keyBtn, {BackgroundColor3 = Theme.ElementBackgroundHover}, 0.15)
+	end)
+	keyBtn.MouseLeave:Connect(function()
+		tween(keyBtn, {BackgroundColor3 = Theme.SwitchOff}, 0.15)
+	end)
+
+	local Keybind = {}
+	Keybind.Instance = container
+
+	function Keybind:Get()
+		return boundInput
+	end
+
+	function Keybind:GetState()
+		return state
+	end
+
+	function Keybind:Set(input)
+		if listening then stopListening() end
+		boundInput = ResolveKeybindInput(input)
+		refreshKeyText()
+		state = false
+	end
+
+	function Keybind:SetTitle(text)
+		nameLabel.Text = text
+	end
+
+	function Keybind:SetDesc(text)
+		if descLabel then
+			descLabel.Text = text
+			return
+		end
+
+		container.Size = UDim2.new(1, 0, 0, 44)
+		if hasKeybindIcon then
+			keybindIconSize = 32
+			keybindIcon.Size = UDim2.new(0, keybindIconSize, 0, keybindIconSize)
+			keybindIcon.Position = UDim2.new(0, 12, 0.5, 0)
+			keybindLeftPad = 12 + keybindIconSize + 8
+		end
+		nameLabel.Position = UDim2.new(0, keybindLeftPad, 0, 6)
+		nameLabel.Size = UDim2.new(1, -(keybindLeftPad + 88), 0, 18)
+
+		descLabel = NewInstance("TextLabel", container)
+		descLabel.BackgroundTransparency = 1
+		descLabel.Position = UDim2.new(0, keybindLeftPad, 0, 24)
+		descLabel.Size = UDim2.new(1, -(keybindLeftPad + 88), 0, 14)
+		descLabel.Font = Enum.Font.Gotham
+		descLabel.Text = text
+		descLabel.TextSize = 12
+		descLabel.TextColor3 = Theme.TextPrimary
+		descLabel.TextTransparency = 0.3
+		descLabel.TextXAlignment = Enum.TextXAlignment.Left
+		descLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	end
+
+	function Keybind:Lock()
+		if locked then return end
+		locked = true
+		if listening then stopListening() end
+		if mode == "Hold" and state then
+			state = false
+			callback(state)
+		end
+		keyBtn.Active = false
+		tween(container, {BackgroundTransparency = 0.5}, 0.15)
+		tween(containerStroke, {Transparency = 0.5}, 0.15)
+		tween(nameLabel, {TextTransparency = 0.5}, 0.15)
+		if descLabel then
+			tween(descLabel, {TextTransparency = 0.6}, 0.15)
+		end
+		lockUi = CreateLockUi(container)
+	end
+
+	function Keybind:Unlock()
+		if not locked then return end
+		locked = false
+		keyBtn.Active = true
+		tween(container, {BackgroundTransparency = 0}, 0.15)
+		tween(containerStroke, {Transparency = 0}, 0.15)
+		tween(nameLabel, {TextTransparency = 0}, 0.15)
+		if descLabel then
+			tween(descLabel, {TextTransparency = 0.3}, 0.15)
+		end
+		DestroyLockUi(lockUi)
+		lockUi = nil
+	end
+
+	function Keybind:Destroy()
+		captureConnection:Disconnect()
+		pressConnection:Disconnect()
+		releaseConnection:Disconnect()
+		container:Destroy()
+	end
+
+	return MakeCaseInsensitive(Keybind)
 end
 
 function Window:Dialog(config)
@@ -4048,7 +4377,6 @@ do
 
 	function Library:Notify(config)
 		if NotifyScreenGui and NotifyScreenGui.Parent then
-			-- screen gui already available
 		else
 			NotifyScreenGui = NewInstance("ScreenGui")
 			NotifyScreenGui.ResetOnSpawn = false
