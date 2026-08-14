@@ -656,6 +656,9 @@ function Library:Window(config)
 	window.tabOrder = 0
 	window.scrollFrame = scrollFrame
 
+	window.elementOrder = 0
+	window.window = window
+
 	local toggleWindowInner, isWindowOpen
 	local resizeHandle
 
@@ -1161,6 +1164,23 @@ local function CreateTooltip(self, guiObject, text)
 end
 
 function Tab:Button(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 	local callback = config.Callback or function() end
@@ -1382,6 +1402,23 @@ function Tab:Button(config)
 end
 
 function Tab:Toggle(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 	local callback = config.Callback or function() end
@@ -1578,6 +1615,23 @@ function Tab:Toggle(config)
 end
 
 function Tab:Slider(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 	local callback = config.Callback or function() end
@@ -1607,10 +1661,20 @@ function Tab:Slider(config)
 	containerStroke.Thickness = 1
 	containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+	local iconsConfig = config.Icons
+	local fromIconString = iconsConfig and iconsConfig.From
+	local toIconString = iconsConfig and iconsConfig.To
+	local hasFromIcon = fromIconString ~= nil
+	local hasToIcon = toIconString ~= nil
+
+	local sliderIconSize = 20
+	local leftInset = hasFromIcon and (12 + sliderIconSize + 8) or 12
+	local rightInset = hasToIcon and (12 + sliderIconSize + 8) or 12
+
 	local nameLabel = NewInstance("TextLabel", container)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Position = UDim2.new(0, 12, 0, 4)
-	nameLabel.Size = UDim2.new(1, -24, 0, 18)
+	nameLabel.Position = UDim2.new(0, leftInset, 0, 4)
+	nameLabel.Size = UDim2.new(1, -(leftInset + rightInset), 0, 18)
 	nameLabel.Font = Enum.Font.GothamMedium
 	nameLabel.Text = config.Name or "Slider"
 	nameLabel.TextSize = 14
@@ -1622,8 +1686,8 @@ function Tab:Slider(config)
 	if hasDesc then
 		descLabel = NewInstance("TextLabel", container)
 		descLabel.BackgroundTransparency = 1
-		descLabel.Position = UDim2.new(0, 12, 0, 18)
-		descLabel.Size = UDim2.new(1, -24, 0, 14)
+		descLabel.Position = UDim2.new(0, leftInset, 0, 18)
+		descLabel.Size = UDim2.new(1, -(leftInset + rightInset), 0, 14)
 		descLabel.Font = Enum.Font.Gotham
 		descLabel.Text = descText
 		descLabel.TextSize = 12
@@ -1641,7 +1705,7 @@ function Tab:Slider(config)
 	local valueLabel = NewInstance("TextLabel", container)
 	valueLabel.BackgroundTransparency = 1
 	valueLabel.ZIndex = 2
-	valueLabel.Position = UDim2.new(1, -68, 0, 6)
+	valueLabel.Position = UDim2.new(1, -(rightInset + 56), 0, 6)
 	valueLabel.Size = UDim2.new(0, 56, 0, 18)
 	valueLabel.Font = Enum.Font.Gotham
 	if value == math.floor(value) then
@@ -1658,8 +1722,8 @@ function Tab:Slider(config)
 	track.BackgroundColor3 = Theme.TrackBackground
 	track.BorderSizePixel = 0
 	track.Active = true
-	track.Position = UDim2.new(0, 12, 1, -18)
-	track.Size = UDim2.new(1, -24, 0, 6)
+	track.Position = UDim2.new(0, leftInset, 1, -18)
+	track.Size = UDim2.new(1, -(leftInset + rightInset), 0, 6)
 
 	local trackCorner = NewInstance("UICorner", track)
 	trackCorner.CornerRadius = UDim.new(0, 3)
@@ -1672,19 +1736,24 @@ function Tab:Slider(config)
 	local fillCorner = NewInstance("UICorner", fill)
 	fillCorner.CornerRadius = UDim.new(0, 3)
 
-	local iconsConfig = config.Icons
-	local fromIconString = iconsConfig and iconsConfig.From
-	local toIconString = iconsConfig and iconsConfig.To
-	local hasSliderIcons = fromIconString ~= nil or toIconString ~= nil
+	local fromIcon = CreateIcon(container, fromIconString, UDim2.new(0, sliderIconSize, 0, sliderIconSize))
+	if fromIcon then
+		fromIcon.AnchorPoint = Vector2.new(0, 0.5)
+		fromIcon.Position = UDim2.new(0, 12, 0.5, 0)
+		fromIcon.ImageTransparency = 0
+	end
+
+	local toIcon = CreateIcon(container, toIconString, UDim2.new(0, sliderIconSize, 0, sliderIconSize))
+	if toIcon then
+		toIcon.AnchorPoint = Vector2.new(1, 0.5)
+		toIcon.Position = UDim2.new(1, -12, 0.5, 0)
+		toIcon.ImageTransparency = 0
+	end
 
 	local knob = NewInstance("Frame", track)
 	knob.BackgroundColor3 = Theme.TextPrimary
 	knob.BorderSizePixel = 0
-	if hasSliderIcons then
-		knob.Size = UDim2.new(0, 18, 0, 18)
-	else
-		knob.Size = UDim2.new(0, 14, 0, 14)
-	end
+	knob.Size = UDim2.new(0, 14, 0, 14)
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.Position = UDim2.new(0, 0, 0.5, 0)
 	knob.ZIndex = 2
@@ -1692,31 +1761,11 @@ function Tab:Slider(config)
 	local knobCorner = NewInstance("UICorner", knob)
 	knobCorner.CornerRadius = UDim.new(0.5, 0)
 
-	local fromIcon = CreateIcon(knob, fromIconString, UDim2.new(0, 12, 0, 12), Theme.WindowBackground)
-	if fromIcon then
-		fromIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-		fromIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-		fromIcon.ZIndex = 3
-	end
-
-	local toIcon = CreateIcon(knob, toIconString, UDim2.new(0, 12, 0, 12), Theme.WindowBackground)
-	if toIcon then
-		toIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-		toIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-		toIcon.ZIndex = 3
-	end
-
 	local function render(newValue)
 		value = newValue
 		local fraction = (value - minValue) / (maxValue - minValue)
 		fill.Size = UDim2.new(fraction, 0, 1, 0)
 		knob.Position = UDim2.new(fraction, 0, 0.5, 0)
-		if fromIcon then
-			fromIcon.ImageTransparency = fraction
-		end
-		if toIcon then
-			toIcon.ImageTransparency = 1 - fraction
-		end
 		if value == math.floor(value) then
 			valueLabel.Text = tostring(math.floor(value))
 		else
@@ -1792,8 +1841,8 @@ function Tab:Slider(config)
 
 		descLabel = NewInstance("TextLabel", container)
 		descLabel.BackgroundTransparency = 1
-		descLabel.Position = UDim2.new(0, 12, 0, 18)
-		descLabel.Size = UDim2.new(1, -24, 0, 14)
+		descLabel.Position = UDim2.new(0, leftInset, 0, 18)
+		descLabel.Size = UDim2.new(1, -(leftInset + rightInset), 0, 14)
 		descLabel.Font = Enum.Font.Gotham
 		descLabel.Text = text
 		descLabel.TextSize = 12
@@ -1842,6 +1891,23 @@ function Tab:Slider(config)
 end
 
 function Tab:ColorPicker(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 	local callback = config.Callback or function() end
@@ -2580,6 +2646,23 @@ function Tab:ColorPicker(config)
 end
 
 function Tab:Textbox(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 	local callback = config.Callback or function() end
@@ -2789,6 +2872,23 @@ function Tab:Textbox(config)
 end
 
 function Tab:Label(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 
@@ -2832,6 +2932,23 @@ function Tab:Label(config)
 end
 
 function Tab:Space(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 
@@ -2858,15 +2975,30 @@ function Tab:Space(config)
 end
 
 function Tab:Dropdown(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 	local callback = config.Callback or function() end
 	local options = config.Options or config.Values or {}
 	local multi = config.Multi == true
-	local returnType = config.Type
-	if returnType ~= "Dictionary" then
-		returnType = "Array"
-	end
+	local returnType = tostring(config.Type or "Array"):lower()
+	returnType = (returnType == "dictionary") and "Dictionary" or "Array"
 	local placeholderText = config.PlaceholderText or config.Placeholder or "Select..."
 	local maxVisibleItems = 6
 	local searchable = config.Searchable == true
@@ -3581,11 +3713,28 @@ function Tab:Dropdown(config)
 end
 
 function Tab:Keybind(config)
+	if not self.holder then
+		self.tabOrder = self.tabOrder + 1
+
+		local directHolder = NewInstance("Frame", self.scrollFrame)
+		directHolder.BackgroundTransparency = 1
+		directHolder.Size = UDim2.new(1, 0, 0, 0)
+		directHolder.AutomaticSize = Enum.AutomaticSize.Y
+		directHolder.LayoutOrder = self.tabOrder
+
+		local directHolderListLayout = NewInstance("UIListLayout", directHolder)
+		directHolderListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		directHolderListLayout.FillDirection = Enum.FillDirection.Vertical
+		directHolderListLayout.Padding = UDim.new(0, 8)
+
+		self.holder = directHolder
+	end
+
 	config = MakeCaseInsensitive(config)
 	config = config or {}
 	local callback = config.Callback or function() end
-	local mode = config.Mode
-	if mode ~= "Toggle" then mode = "Hold" end
+	local mode = tostring(config.Mode or "Hold"):lower()
+	mode = (mode == "toggle") and "Toggle" or "Hold"
 	local descText = config.Desc or config.Description
 	local hasDesc = descText ~= nil and descText ~= ""
 
@@ -3964,7 +4113,7 @@ function Window:Dialog(config)
 	bodyListLayout.Padding = UDim.new(0, 10)
 
 	local titleText = tostring(config.Title or "")
-	local descTextValue = tostring(config.Description or config.Desc or "")
+	local descTextValue = tostring(config.Desc or config.Description or "")
 	local hasTitleText = titleText ~= ""
 	local hasDescText = descTextValue ~= ""
 	local hasIconData = GetIconData(config.Icon) ~= nil
@@ -4204,7 +4353,7 @@ function Window:Dialog(config)
 	end
 
 	dialog:SetTitle(config.Title)
-	dialog:SetDesc(config.Description or config.Desc)
+	dialog:SetDesc(config.Desc or config.Description)
 
 	if type(config.Buttons) == "table" then
 		for i, buttonConfigRaw in ipairs(config.Buttons) do
@@ -4413,7 +4562,7 @@ do
 
 		local text
 		do
-			local value = config.Desc or ""
+			local value = config.Desc or config.Description or ""
 			if type(value) ~= "string" then value = tostring(value) end
 			text = (value:gsub("\r\n", "\n"):gsub("\r", "\n"))
 		end
@@ -5103,6 +5252,16 @@ do
 		return MakeCaseInsensitive(Notif)
 	end
 end
+
+Window.Button = Tab.Button
+Window.Toggle = Tab.Toggle
+Window.Slider = Tab.Slider
+Window.ColorPicker = Tab.ColorPicker
+Window.Textbox = Tab.Textbox
+Window.Label = Tab.Label
+Window.Space = Tab.Space
+Window.Dropdown = Tab.Dropdown
+Window.Keybind = Tab.Keybind
 
 MakeCaseInsensitive(Window)
 MakeCaseInsensitive(Tab)
