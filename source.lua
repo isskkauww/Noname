@@ -45,36 +45,48 @@ end
 
 rare.loadStart = os.clock()
 
-local function safeLoad(url)
+local function safeLoad(url, retries)
+	retries = retries or 3
 	local loader = (type(loadstring) == "function" and loadstring) or (type(load) == "function" and load)
 
 	if not loader then
 		return nil, "This executor does not provide loadstring/load."
 	end
 
-	local body = (function()
-		if type(game.HttpGet) == "function" then
-			local ok, res = pcall(function() return game:HttpGet(url) end)
-			if ok then return res end
+	local body
+	for attempt = 1, retries do
+		body = (function()
+			if type(game.HttpGet) == "function" then
+				local ok, res = pcall(function() return game:HttpGet(url) end)
+				if ok then return res end
+			end
+
+			local HttpService = cloneref(game:GetService("HttpService"))
+			if type(HttpService.GetAsync) == "function" then
+				local ok, res = pcall(function() return HttpService:GetAsync(url) end)
+				if ok then return res end
+			end
+
+			local reqFn = (type(request) == "function" and request) or (type(http_request) == "function" and http_request) or (type(syn) == "table" and type(syn.request) == "function" and syn.request) or (type(http) == "table" and type(http.request) == "function" and http.request)
+
+			if reqFn then
+				local ok, res = pcall(function()
+					return reqFn({ Url = url, Method = "GET" })
+				end)
+				if ok and res and res.Body then return res.Body end
+			end
+
+			return nil
+		end)()
+
+		if body then break end
+
+		if attempt < retries then
+			warn("[Noname] HTTP attempt " .. attempt .. " failed for " .. url .. ", retrying in 2s...")
+			task.wait(2)
 		end
+	end
 
-		local HttpService = cloneref(game:GetService("HttpService"))
-		if type(HttpService.GetAsync) == "function" then
-			local ok, res = pcall(function() return HttpService:GetAsync(url) end)
-			if ok then return res end
-		end
-
-		local reqFn = (type(request) == "function" and request) or (type(http_request) == "function" and http_request) or (type(syn) == "table" and type(syn.request) == "function" and syn.request) or (type(http) == "table" and type(http.request) == "function" and http.request)
-
-		if reqFn then
-			local ok, res = pcall(function()
-				return reqFn({ Url = url, Method = "GET" })
-			end)
-			if ok and res and res.Body then return res.Body end
-		end
-
-		return nil
-	end)()
 	if not body then
 		return nil, "Failed to fetch: " .. tostring(url) .. " (no working HTTP method found)."
 	end
@@ -92,17 +104,48 @@ local function safeLoad(url)
 	return result
 end
 
-local Library
-Library, rare.libErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Noname/refs/heads/main/NonameLibrary.lua")
-if not Library then
-	warn("[Noname] Failed to load NonameLibrary module: " .. tostring(rare.libErr))
+local Bind
+Bind, rare.bindErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Modules/refs/heads/main/Connection%20Manager.luau")
+if not Bind then
+	warn("[Noname] Failed to load Connection Manager module: " .. tostring(rare.bindErr))
+	nnPrivate.Loaded = nil
 	return
 end
+
+local Signal
+Signal, rare.signalErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Modules/refs/heads/main/FastSignal.luau")
+if not Signal then
+	warn("[Noname] Failed to load FastSignal module: " .. tostring(rare.signalErr))
+	nnPrivate.Loaded = nil
+	return
+end
+
+local ThreadPool
+ThreadPool, rare.threadPoolErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Modules/refs/heads/main/ThreadPool.luau")
+if not ThreadPool then
+	warn("[Noname] Failed to load ThreadPool module: " .. tostring(rare.threadPoolErr))
+	nnPrivate.Loaded = nil
+	return
+end
+
+local Library
+rare.libraryReady = false
+ThreadPool:Spawn(function()
+	local lib, err = safeLoad("https://raw.githubusercontent.com/isskkauww/Noname/refs/heads/main/NonameLibrary.lua")
+	if not lib then
+		rare.libErr = err
+		warn("[Noname] Failed to load NonameLibrary module: " .. tostring(err))
+		return
+	end
+	Library = lib
+	rare.libraryReady = true
+end)
 
 local UI
 UI, rare.uiErr = safeLoad("https://raw.githubusercontent.com/isskkauww/Noname/refs/heads/main/Noname-Ui.lua")
 if not UI then
 	warn("[Noname] Failed to load UI module: " .. tostring(rare.uiErr))
+	nnPrivate.Loaded = nil
 	return
 end
 
@@ -131,9 +174,14 @@ local func = {
 local flying = false
 local bodyVelocity = nil
 local bodyGyro = nil
-local NNConn = {}
 local Cmds = {}
-local Controls = require(cloneref(LocalPlayer:WaitForChild("PlayerScripts")):WaitForChild("PlayerModule")):GetControls()
+local Controls = nil
+ThreadPool:Spawn(function()
+	local playerModule = cloneref(LocalPlayer:WaitForChild("PlayerScripts")):WaitForChild("PlayerModule", 5)
+	if playerModule then
+		Controls = require(playerModule):GetControls()
+	end
+end)
 local flyspeed = nil
 local execapi = {
 	writefile = type(writefile) == "function" and writefile or nil,
@@ -159,9 +207,9 @@ local execapi = {
 local espOpts = { color = Color3.fromRGB(255, 80, 80), distance = false, health = false, chamsonly = false, colorByTeam = false, useCustomColor = false }
 local ignoreTeamOpts = { silentaim = false, aimlock = false, hitbox = false, fling = false }
 local afkMode = nil
-local playerChar = LocalPlayer.Character
-local playerHum = playerChar and playerChar:FindFirstChildOfClass("Humanoid")
-local playerHRP = playerChar and playerChar:FindFirstChild("HumanoidRootPart")
+local playerChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local playerHum = playerChar:WaitForChild("Humanoid")
+local playerHRP = playerChar:WaitForChild("HumanoidRootPart")
 
 -- notify
 rare.nnSuppressNotify = false
@@ -172,6 +220,10 @@ local function notify(icon, duration, title, text, noise)
 	if rare.nnSuppressNotify then return end
 	if not rare.debugNotif then return end
 	if rare.disableNoiseNotif and noise then return end
+	if not rare.libraryReady then
+		warn("[Noname] Library not loaded yet.")
+		return
+	end
 	Library:Notify({
 		Title = title or "Noname",
 		Desc = text or "",
@@ -181,97 +233,6 @@ local function notify(icon, duration, title, text, noise)
 	})
 end
 
--- GoodSignal
-local freeRunnerThread = nil
-
-local function acquireRunnerThreadAndCallEventHandler(fn, ...)
-	local acquiredRunnerThread = freeRunnerThread
-	freeRunnerThread = nil
-	fn(...)
-	freeRunnerThread = acquiredRunnerThread
-end
-
-local function runEventHandlerInFreeThread()
-	while true do
-		acquireRunnerThreadAndCallEventHandler(coroutine.yield())
-	end
-end
-
-local Connection = {}
-Connection.__index = Connection
-
-function Connection.new(signal, fn)
-	return setmetatable({ connected = true, signal = signal, fn = fn, next = false }, Connection)
-end
-
-function Connection:Disconnect()
-	self.connected = false
-
-	if self.signal.handlerListHead == self then
-		self.signal.handlerListHead = self.next
-	else
-		local prev = self.signal.handlerListHead
-		while prev and prev.next ~= self do
-			prev = prev.next
-		end
-		if prev then
-			prev.next = self.next
-		end
-	end
-end
-
-local Signal = {}
-Signal.__index = Signal
-
-function Signal.new()
-	return setmetatable({ handlerListHead = false }, Signal)
-end
-
-function Signal:Connect(fn)
-	local connection = Connection.new(self, fn)
-	connection.next = self.handlerListHead
-	self.handlerListHead = connection
-	return connection
-end
-
-function Signal:DisconnectAll()
-	self.handlerListHead = false
-end
-
-function Signal:Fire(...)
-	local item = self.handlerListHead
-	while item do
-		if item.connected then
-			if not freeRunnerThread then
-				freeRunnerThread = coroutine.create(runEventHandlerInFreeThread)
-				coroutine.resume(freeRunnerThread)
-			end
-			task.spawn(freeRunnerThread, item.fn, ...)
-		end
-		item = item.next
-	end
-end
-
-function Signal:Wait()
-	local waitingCoroutine = coroutine.running()
-	local cn
-	cn = self:Connect(function(...)
-		cn:Disconnect()
-		task.spawn(waitingCoroutine, ...)
-	end)
-	return coroutine.yield()
-end
-
-function Signal:Once(fn)
-	local cn
-	cn = self:Connect(function(...)
-		if cn.connected then
-			cn:Disconnect()
-		end
-		fn(...)
-	end)
-	return cn
-end
 
 -- cache
 local PlayerAdded = Signal.new()
@@ -304,80 +265,6 @@ CharacterAdded:Connect(function(char)
 	CharacterCached:Fire()
 end)
 
--- NnBind
-local nnPrCnt = 0
-
-local function nnPrune(name)
-	local bucket = NNConn[name]
-	if type(bucket) ~= "table" then
-		NNConn[name] = nil
-		return 0
-	end
-	local write = 1
-	for i = 1, #bucket do
-		local conn = bucket[i]
-		local isLive
-		if conn == nil then
-			isLive = false
-		elseif type(conn) == "table" and type(conn.connected) == "boolean" then
-			isLive = conn.connected
-		else
-			local ok, res = pcall(function() return conn.Connected end)
-			isLive = ok and res == true
-		end
-		if isLive then
-			bucket[write] = bucket[i]
-			write += 1
-		end
-	end
-	for i = write, #bucket do bucket[i] = nil end
-	local alive = write - 1
-	if alive <= 0 then NNConn[name] = nil end
-	return alive
-end
-
-local NnBind = {}
-
-NnBind.connect = function(name, conn)
-	if not name or not conn then return conn end
-	nnPrune(name)
-	local bucket = NNConn[name]
-	if type(bucket) ~= "table" then
-		bucket = {}
-		NNConn[name] = bucket
-	end
-	table.insert(bucket, conn)
-	nnPrCnt += 1
-	if nnPrCnt % 128 == 0 then
-		for key in NNConn do nnPrune(key) end
-	end
-	return conn
-end
-
-NnBind.disconnect = function(name)
-	if not name then return end
-	local bucket = NNConn[name]
-	if type(bucket) == "table" then
-		for _, conn in bucket do
-			pcall(function()
-				if conn and type(conn.Disconnect) == "function" then
-					conn:Disconnect()
-				end
-			end)
-		end
-	end
-	NNConn[name] = nil
-end
-
-NnBind.reconnect = function(name, conn)
-	NnBind.disconnect(name)
-	return NnBind.connect(name, conn)
-end
-
-NnBind.isConnected = function(name)
-	if not name then return false end
-	return nnPrune(name) > 0
-end
 
 -- Local Functions & Some Logic
 local cmdFrame = UI.CommandBar.frame
@@ -602,7 +489,7 @@ rare.closeCmd = function(input)
 	end
 end
 
-NnBind.connect("cmd_inputText", inputBox:GetPropertyChangedSignal("Text"):Connect(function()
+Bind:Connect(inputBox:GetPropertyChangedSignal("Text"), function()
 	local txt = string.lower(inputBox.Text)
 	if string.find(txt, " ") then
 		suggFrame.Visible = false
@@ -639,9 +526,9 @@ NnBind.connect("cmd_inputText", inputBox:GetPropertyChangedSignal("Text"):Connec
 			end
 		end
 	end
-end))
+end, "cmd_inputText")
 
-NnBind.connect("cmd_focusLost", inputBox.FocusLost:Connect(function(enter)
+Bind:Connect(inputBox.FocusLost, function(enter)
 	if rare.clickingSugg then
 		return
 	end
@@ -651,7 +538,21 @@ NnBind.connect("cmd_focusLost", inputBox.FocusLost:Connect(function(enter)
 		return
 	end
 	rare.closeCmd(input)
-end))
+end, "cmd_focusLost")
+
+local function GetMoveVector()
+	if Controls ~= nil then
+		return Controls:GetMoveVector()
+	end
+
+	local worldMove = playerHum.MoveDirection
+	if worldMove.Magnitude == 0 then
+		return Vector3.zero
+	end
+
+	local lookVec = Camera.CFrame.LookVector
+	return CFrame.new(Vector3.zero, Vector3.new(lookVec.X, 0, lookVec.Z)):VectorToObjectSpace(worldMove)
+end
 
 func.feat.loopwalkspeed = function(Speed)
 	local function applyWalkSpeed(char)
@@ -663,16 +564,16 @@ func.feat.loopwalkspeed = function(Speed)
 
 		hum.WalkSpeed = Speed
 
-		NnBind.reconnect("ws_changed", hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+		Bind:Connect(hum:GetPropertyChangedSignal("WalkSpeed"), function()
 			if hum.WalkSpeed ~= Speed then
 				hum.WalkSpeed = Speed
 			end
-		end))
+		end, "ws_changed")
 	end
 
 	applyWalkSpeed()
 
-	NnBind.reconnect("ws_charAdded", CharacterAdded:Connect(applyWalkSpeed))
+	Bind:Connect(CharacterAdded, applyWalkSpeed, "ws_charAdded")
 end
 
 func.feat.noclip = function()
@@ -686,28 +587,28 @@ func.feat.noclip = function()
 			end
 		end
 
-		NnBind.reconnect("noclip_added", character.DescendantAdded:Connect(function(d)
+		Bind:Connect(character.DescendantAdded, function(d)
 			if d:IsA("BasePart") then noclipParts[d] = true end
-		end))
+		end, "noclip_added")
 
-		NnBind.reconnect("noclip_removing", character.DescendantRemoving:Connect(function(d)
+		Bind:Connect(character.DescendantRemoving, function(d)
 			noclipParts[d] = nil
-		end))
+		end, "noclip_removing")
 	end
 
 	if playerChar then
 		hookCharacter(playerChar)
 	end
 
-	NnBind.reconnect("noclip_charAdded", CharacterAdded:Connect(function(character)
+	Bind:Connect(CharacterAdded, function(character)
 		hookCharacter(character)
-	end))
+	end, "noclip_charAdded")
 
-	NnBind.reconnect("noclip_stepped", RunService.Stepped:Connect(function()
+	Bind:Connect(RunService.Stepped, function()
 		for part in pairs(noclipParts) do
 			part.CanCollide = false
 		end
-	end))
+	end, "noclip_stepped")
 end
 
 func.feat.invisible = function()
@@ -731,7 +632,7 @@ func.feat.invisible = function()
 
 	notify("sfsymbols:eyeSlashFill", 3, "Invisible", "You are now invisible.", true)
 
-	NnBind.reconnect("invis_transparency", RunService.Stepped:Connect(function()
+	Bind:Connect(RunService.Stepped, function()
 		local c = playerChar
 		if not c then return end
 		for _, part in ipairs(c:GetDescendants()) do
@@ -739,9 +640,9 @@ func.feat.invisible = function()
 				part.Transparency = 0.5
 			end
 		end
-	end))
+	end, "invis_transparency")
 
-	NnBind.reconnect("invis_heartbeat", RunService.Heartbeat:Connect(function()
+	Bind:Connect(RunService.Heartbeat, function()
 		local c = playerChar
 		local h = playerHum
 		local r = playerHRP
@@ -758,11 +659,11 @@ func.feat.invisible = function()
 
 		r.CFrame = origCFrame
 		h.CameraOffset = origOffset
-	end))
+	end, "invis_heartbeat")
 
-	NnBind.reconnect("invis_charAdded", CharacterAdded:Connect(function()
+	Bind:Connect(CharacterAdded, function()
 		func.feat.invisible()
-	end))
+	end, "invis_charAdded")
 end
 
 func.feat.fly = function(speed, vfly)
@@ -786,7 +687,7 @@ func.feat.fly = function(speed, vfly)
 				Camera.CameraSubject = hum
 			end
 		end
-		NnBind.reconnect("fly_cameraSubject", Camera:GetPropertyChangedSignal("CameraSubject"):Connect(fixCamera))
+		Bind:Connect(Camera:GetPropertyChangedSignal("CameraSubject"), fixCamera, "fly_cameraSubject")
 		fixCamera()
 	end
 
@@ -798,10 +699,10 @@ func.feat.fly = function(speed, vfly)
 	bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
 	bodyGyro.D = 50
 
-	NnBind.connect("fly_stepped", RunService.RenderStepped:Connect(function(dt)
+	Bind:Connect(RunService.RenderStepped, function(dt)
 		if not flying then return end
 
-		local moveVector = Controls:GetMoveVector()
+		local moveVector = GetMoveVector()
 		local camCFrame = Camera.CFrame
 
 		local direction = (camCFrame.RightVector * moveVector.X) + (camCFrame.LookVector * -moveVector.Z) + (Vector3.new(0, 1, 0) * moveVector.Y)
@@ -813,7 +714,7 @@ func.feat.fly = function(speed, vfly)
 		end
 
 		bodyGyro.CFrame = bodyGyro.CFrame:Lerp(camCFrame, math.min(1, dt * 5))
-	end))
+	end, "fly_stepped")
 end
 
 func.feat.unfly = function()
@@ -827,8 +728,8 @@ func.feat.unfly = function()
 		end
 	end
 
-	NnBind.disconnect("fly_cameraSubject")
-	NnBind.disconnect("fly_stepped")
+	Bind:Disconnect("fly_cameraSubject")
+	Bind:Disconnect("fly_stepped")
 
 	if bodyVelocity then
 		bodyVelocity:Destroy()
@@ -857,25 +758,25 @@ func.feat.startFc = function(speedArg)
 	local root = playerHRP
 	if root then root.Anchored = true end
 
-	NnBind.reconnect("fc_char", CharacterAdded:Connect(function()
+	Bind:Connect(CharacterAdded, function()
 		CharacterCached:Wait()
 		if playerHRP then playerHRP.Anchored = true end
-	end))
+	end, "fc_char")
 
-	NnBind.reconnect("fc_stepped", RunService.RenderStepped:Connect(function(dt)
-		local mv = Controls:GetMoveVector()
+	Bind:Connect(RunService.RenderStepped, function(dt)
+		local mv = GetMoveVector()
 		local move = (Camera.CFrame.LookVector * -mv.Z) + (Camera.CFrame.RightVector * mv.X)
 		if move.X ~= 0 or move.Y ~= 0 or move.Z ~= 0 then
 			part.CFrame = part.CFrame + move * (speed * 25 * dt)
 		end
-	end))
+	end, "fc_stepped")
 
 	notify("sfsymbols:camera", 3, "Freecam", "Enabled (speed " .. speed .. ").", true)
 end
 
 func.feat.stopFc = function()
-	NnBind.disconnect("fc_stepped")
-	NnBind.disconnect("fc_char")
+	Bind:Disconnect("fc_stepped")
+	Bind:Disconnect("fc_char")
 	if rare.fcPart then
 		rare.fcPart:Destroy()
 		rare.fcPart = nil
@@ -892,20 +793,20 @@ func.feat.enableAntiVoid = function()
 		local hum = char:WaitForChild("Humanoid")
 		local root = char:WaitForChild("HumanoidRootPart")
 
-		NnBind.reconnect("antivoid_health", hum.HealthChanged:Connect(function()
+		Bind:Connect(hum.HealthChanged, function()
 			if root.Position.Y <= rare.fpdh + 20 then
 				hum.Health = hum.MaxHealth
 			end
-		end))
+		end, "antivoid_health")
 	end
 
 	workspace.FallenPartsDestroyHeight = 0 / 0
 
-	NnBind.reconnect("antivoid_fpdh", workspace:GetPropertyChangedSignal("FallenPartsDestroyHeight"):Connect(function()
+	Bind:Connect(workspace:GetPropertyChangedSignal("FallenPartsDestroyHeight"), function()
 		if workspace.FallenPartsDestroyHeight == workspace.FallenPartsDestroyHeight then
 			workspace.FallenPartsDestroyHeight = 0 / 0
 		end
-	end))
+	end, "antivoid_fpdh")
 
 	local char = playerChar or CharacterAdded:Wait()
 	local root = playerHRP or char:WaitForChild("HumanoidRootPart")
@@ -927,7 +828,7 @@ func.feat.enableAntiVoid = function()
 
 	platform.Position = Vector3.new(root.Position.X, -5000, root.Position.Z)
 
-	task.spawn(function()
+	ThreadPool:Spawn(function()
 		while true do
 			task.wait(4)
 
@@ -945,10 +846,10 @@ func.feat.enableAntiVoid = function()
 		end
 	end)
 
-	NnBind.reconnect("antivoid_char", CharacterAdded:Connect(function(newChar)
+	Bind:Connect(CharacterAdded, function(newChar)
 		task.wait(0.1)
 		initVoidChar(newChar)
-	end))
+	end, "antivoid_char")
 
 	initVoidChar(char)
 
@@ -1171,7 +1072,7 @@ func.persist.loadKeybinds = function()
 end
 
 func.init.keybindListener = function()
-	NnBind.reconnect("keybind_input", UserInputService.InputBegan:Connect(function(input, gp)
+	Bind:Connect(UserInputService.InputBegan, function(input, gp)
 		if gp or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 		local keyName = input.KeyCode.Name:lower()
 		for _, kb in ipairs(keybinds) do
@@ -1197,7 +1098,7 @@ func.init.keybindListener = function()
 				break
 			end
 		end
-	end))
+	end, "keybind_input")
 end
 
 -- Button system
@@ -1508,19 +1409,19 @@ espFolder.Parent = workspace
 
 func.esp.clearAll = function()
 	rare.espActive = false
-	NnBind.disconnect("esp_playerAdded")
-	NnBind.disconnect("esp_playerRemoving")
+	Bind:Disconnect("esp_playerAdded")
+	Bind:Disconnect("esp_playerRemoving")
 	for player in pairs(cachedPlayers) do
-		NnBind.disconnect("esp_charAdded_" .. player.Name)
-		NnBind.disconnect("esp_charRemoving_" .. player.Name)
+		Bind:Disconnect("esp_charAdded_" .. player.Name)
+		Bind:Disconnect("esp_charRemoving_" .. player.Name)
 	end
 	for _, obj in pairs(espObjects) do
 		if obj.playerName then
-			NnBind.disconnect("esp_hp_" .. obj.playerName)
-			NnBind.disconnect("esp_dist_" .. obj.playerName)
-			NnBind.disconnect("esp_namedist_" .. obj.playerName)
-			NnBind.disconnect("esp_hpdist_" .. obj.playerName)
-			NnBind.disconnect("esp_ddtype_" .. obj.playerName)
+			Bind:Disconnect("esp_hp_" .. obj.playerName)
+			Bind:Disconnect("esp_dist_" .. obj.playerName)
+			Bind:Disconnect("esp_namedist_" .. obj.playerName)
+			Bind:Disconnect("esp_hpdist_" .. obj.playerName)
+			Bind:Disconnect("esp_ddtype_" .. obj.playerName)
 		end
 	end
 	for _, child in ipairs(espFolder:GetChildren()) do
@@ -1605,40 +1506,40 @@ func.esp.apply = function(player, color, opts)
 			local hum = char:FindFirstChildOfClass("Humanoid")
 			if hum then
 				hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Subject
-				NnBind.reconnect("esp_ddtype_" .. player.Name, hum:GetPropertyChangedSignal("DisplayDistanceType"):Connect(function()
+				Bind:Connect(hum:GetPropertyChangedSignal("DisplayDistanceType"), function()
 					if hum.DisplayDistanceType ~= Enum.HumanoidDisplayDistanceType.Subject then
 						hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Subject
 					end
-				end))
+				end, "esp_ddtype_" .. player.Name)
 
 				hum.NameDisplayDistance = 0
-				NnBind.reconnect("esp_namedist_" .. player.Name, hum:GetPropertyChangedSignal("NameDisplayDistance"):Connect(function()
+				Bind:Connect(hum:GetPropertyChangedSignal("NameDisplayDistance"), function()
 					if hum.NameDisplayDistance ~= 0 then
 						hum.NameDisplayDistance = 0
 					end
-				end))
+				end, "esp_namedist_" .. player.Name)
 
 				if opts.health then
 					cachedHp = math.floor(hum.Health)
 					rebuildLabel()
-					NnBind.reconnect("esp_hp_" .. player.Name, hum.HealthChanged:Connect(function(hp)
+					Bind:Connect(hum.HealthChanged, function(hp)
 						cachedHp = math.floor(hp)
 						rebuildLabel()
-					end))
+					end, "esp_hp_" .. player.Name)
 
 					hum.HealthDisplayDistance = 0
-					NnBind.reconnect("esp_hpdist_" .. player.Name, hum:GetPropertyChangedSignal("HealthDisplayDistance"):Connect(function()
+					Bind:Connect(hum:GetPropertyChangedSignal("HealthDisplayDistance"), function()
 						if hum.HealthDisplayDistance ~= 0 then
 							hum.HealthDisplayDistance = 0
 						end
-					end))
+					end, "esp_hpdist_" .. player.Name)
 				end
 			end
 		end
 	end
 
 	if needsRenderStepped then
-		NnBind.reconnect("esp_dist_" .. player.Name, RunService.RenderStepped:Connect(function()
+		Bind:Connect(RunService.RenderStepped, function()
 			local lr = playerHRP
 			local tr = char:FindFirstChild("HumanoidRootPart")
 			if not (lr and tr) then return end
@@ -1656,7 +1557,7 @@ func.esp.apply = function(player, color, opts)
 					if lbl then lbl.TextColor3 = newColor end
 				end
 			end
-		end))
+		end, "esp_dist_" .. player.Name)
 	end
 
 	espObjects[char] = {
@@ -1673,46 +1574,46 @@ func.feat.enableESPAll = function()
 		local obj = espObjects[char]
 		if not obj then return end
 		if obj.playerName then
-			NnBind.disconnect("esp_hp_" .. obj.playerName)
-			NnBind.disconnect("esp_dist_" .. obj.playerName)
-			NnBind.disconnect("esp_namedist_" .. obj.playerName)
-			NnBind.disconnect("esp_hpdist_" .. obj.playerName)
-			NnBind.disconnect("esp_ddtype_" .. obj.playerName)
+			Bind:Disconnect("esp_hp_" .. obj.playerName)
+			Bind:Disconnect("esp_dist_" .. obj.playerName)
+			Bind:Disconnect("esp_namedist_" .. obj.playerName)
+			Bind:Disconnect("esp_hpdist_" .. obj.playerName)
+			Bind:Disconnect("esp_ddtype_" .. obj.playerName)
 		end
 		if obj.highlight then obj.highlight:Destroy() end
 		if obj.billboard then obj.billboard:Destroy() end
 		espObjects[char] = nil
 	end
 
-	NnBind.reconnect("esp_playerAdded", PlayerAdded:Connect(function(player)
+	Bind:Connect(PlayerAdded, function(player)
 		if player == LocalPlayer then return end
-		NnBind.reconnect("esp_charAdded_" .. player.Name, player.CharacterAdded:Connect(function()
+		Bind:Connect(player.CharacterAdded, function()
 			task.wait()
 			func.esp.apply(player, espOpts.color, espOpts)
-		end))
-		NnBind.reconnect("esp_charRemoving_" .. player.Name, player.CharacterRemoving:Connect(function(oldChar)
+		end, "esp_charAdded_" .. player.Name)
+		Bind:Connect(player.CharacterRemoving, function(oldChar)
 			cleanChar(oldChar)
-		end))
+		end, "esp_charRemoving_" .. player.Name)
 		if player.Character then
 			func.esp.apply(player, espOpts.color, espOpts)
 		end
-	end))
+	end, "esp_playerAdded")
 
-	NnBind.reconnect("esp_playerRemoving", PlayerRemoving:Connect(function(player)
-		NnBind.disconnect("esp_charAdded_" .. player.Name)
-		NnBind.disconnect("esp_charRemoving_" .. player.Name)
+	Bind:Connect(PlayerRemoving, function(player)
+		Bind:Disconnect("esp_charAdded_" .. player.Name)
+		Bind:Disconnect("esp_charRemoving_" .. player.Name)
 		if player.Character then cleanChar(player.Character) end
-	end))
+	end, "esp_playerRemoving")
 
 	for player in pairs(cachedPlayers) do
 		if player == LocalPlayer then continue end
-		NnBind.reconnect("esp_charAdded_" .. player.Name, player.CharacterAdded:Connect(function()
+		Bind:Connect(player.CharacterAdded, function()
 			task.wait()
 			func.esp.apply(player, espOpts.color, espOpts)
-		end))
-		NnBind.reconnect("esp_charRemoving_" .. player.Name, player.CharacterRemoving:Connect(function(oldChar)
+		end, "esp_charAdded_" .. player.Name)
+		Bind:Connect(player.CharacterRemoving, function(oldChar)
 			cleanChar(oldChar)
-		end))
+		end, "esp_charRemoving_" .. player.Name)
 		if player.Character then
 			func.esp.apply(player, espOpts.color, espOpts)
 		end
@@ -1728,13 +1629,13 @@ func.feat.enableInstantPP = function()
 		end
 	end
 	for _, v in ipairs(workspace:GetDescendants()) do apply(v) end
-	NnBind.reconnect("ipp_added", workspace.DescendantAdded:Connect(apply))
+	Bind:Connect(workspace.DescendantAdded, apply, "ipp_added")
 	notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts enabled.", true)
 end
 
 func.feat.unwatch = function()
-	NnBind.disconnect("watch_removing")
-	NnBind.disconnect("watch_character")
+	Bind:Disconnect("watch_removing")
+	Bind:Disconnect("watch_character")
 
 	if not playerChar then
 		notify("lucide:triangle-alert", 4, "Watch", "LocalPlayer character not found. Waiting for character...", false)
@@ -1756,14 +1657,14 @@ func.feat.watch = function(player)
 		notify("lucide:user-x", 4, "Watch", player.Name .. " has no character yet. Waiting for spawn...", false)
 	end
 
-	NnBind.reconnect("watch_character", player.CharacterAdded:Connect(updateCamera))
+	Bind:Connect(player.CharacterAdded, updateCamera, "watch_character")
 
-	NnBind.reconnect("watch_removing", PlayerRemoving:Connect(function(removedPlayer)
+	Bind:Connect(PlayerRemoving, function(removedPlayer)
 		if removedPlayer == player then
 			notify("lucide:log-out", 4, "Watch", player.Name .. " has left the game. Reverting camera.", false)
 			func.feat.unwatch()
 		end
-	end))
+	end, "watch_removing")
 end
 
 do
@@ -1789,7 +1690,7 @@ do
 			return
 		end
 		acActive = true
-		task.spawn(function()
+		ThreadPool:Spawn(function()
 			local inset = GuiService:GetGuiInset()
 			local x = acTargetX + inset.X
 			local y = acTargetY + inset.Y
@@ -1980,13 +1881,13 @@ func.feat.godmode = function(mode)
 		h:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 		healCheck()
 
-		NnBind.reconnect("gm_stateChanged", h.StateChanged:Connect(function(_, newState)
+		Bind:Connect(h.StateChanged, function(_, newState)
 			if newState == Enum.HumanoidStateType.Dead then
 				healCheck()
 				h:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 				h:ChangeState(Enum.HumanoidStateType.Running)
 			end
-		end))
+		end, "gm_stateChanged")
 
 		if m == "hook" then
 			if type(getnamecallmethod) ~= "function" then
@@ -2034,28 +1935,24 @@ func.feat.godmode = function(mode)
 		end
 
 		if m == "nohook" then
-			NnBind.reconnect("gm_healthChanged",
-				h.HealthChanged:Connect(healCheck))
-			NnBind.reconnect("gm_health",
-				h:GetPropertyChangedSignal("Health"):Connect(healCheck))
-			NnBind.reconnect("gm_maxHealth",
-				h:GetPropertyChangedSignal("MaxHealth"):Connect(healCheck))
-			NnBind.reconnect("gm_breakJoints",
-				h:GetPropertyChangedSignal("BreakJointsOnDeath"):Connect(function()
+			Bind:Connect(h.HealthChanged, healCheck, "gm_healthChanged")
+			Bind:Connect(h:GetPropertyChangedSignal("Health"), healCheck, "gm_health")
+			Bind:Connect(h:GetPropertyChangedSignal("MaxHealth"), healCheck, "gm_maxHealth")
+			Bind:Connect(h:GetPropertyChangedSignal("BreakJointsOnDeath"), function()
 					if h.BreakJointsOnDeath then
 						h.BreakJointsOnDeath = false
 					end
-				end))
+				end, "gm_breakJoints")
 		end
 	end
 
 	applyGodmode(rare.god_mode, hum)
 	notify("sfsymbols:heartFill", 3, "GodMode", "Enabled (" .. (rare.god_mode or "nohook") .. ").", true)
 
-	NnBind.reconnect("gm_charAdded", CharacterAdded:Connect(function()
+	Bind:Connect(CharacterAdded, function()
 		CharacterCached:Wait()
 		if playerHum then applyGodmode(rare.god_mode, playerHum) end
-	end))
+	end, "gm_charAdded")
 end
 
 do
@@ -2068,13 +1965,13 @@ do
 		rare.antiFling = AntiFling
 
 		if not AntiInvis and not AntiFling then
-			NnBind.disconnect("nvf_playerAdded")
+			Bind:Disconnect("nvf_playerAdded")
 			for player in pairs(cachedPlayers) do
-				NnBind.disconnect("nvf_charAdded_" .. player.Name)
-				NnBind.disconnect("nvf_added_" .. player.Name)
+				Bind:Disconnect("nvf_charAdded_" .. player.Name)
+				Bind:Disconnect("nvf_added_" .. player.Name)
 			end
 			for part in pairs(nvfParts) do
-				NnBind.disconnect("antiinvis_" .. part:GetDebugId())
+				Bind:Disconnect("antiinvis_" .. part:GetDebugId())
 			end
 			table.clear(nvfParts)
 			nvfHooksActive = false
@@ -2085,11 +1982,11 @@ do
 			for part in pairs(nvfParts) do
 				if rare.antiInvis and part.Name ~= "HumanoidRootPart" then
 					part.Transparency = 0
-					NnBind.reconnect("antiinvis_" .. part:GetDebugId(), part:GetPropertyChangedSignal("Transparency"):Connect(function()
+					Bind:Connect(part:GetPropertyChangedSignal("Transparency"), function()
 						if rare.antiInvis and part.Transparency ~= 0 then part.Transparency = 0 end
-					end))
+					end, "antiinvis_" .. part:GetDebugId())
 				else
-					NnBind.disconnect("antiinvis_" .. part:GetDebugId())
+					Bind:Disconnect("antiinvis_" .. part:GetDebugId())
 				end
 			end
 			return
@@ -2105,9 +2002,9 @@ do
 
 			if rare.antiInvis and part.Name ~= "HumanoidRootPart" then
 				part.Transparency = 0
-				NnBind.reconnect("antiinvis_" .. part:GetDebugId(), part:GetPropertyChangedSignal("Transparency"):Connect(function()
+				Bind:Connect(part:GetPropertyChangedSignal("Transparency"), function()
 					if rare.antiInvis and part.Transparency ~= 0 then part.Transparency = 0 end
-				end))
+				end, "antiinvis_" .. part:GetDebugId())
 			end
 		end
 
@@ -2115,7 +2012,7 @@ do
 			for _, d in ipairs(character:GetDescendants()) do
 				hookPart(d)
 			end
-			NnBind.reconnect("nvf_added_" .. player.Name, character.DescendantAdded:Connect(hookPart))
+			Bind:Connect(character.DescendantAdded, hookPart, "nvf_added_" .. player.Name)
 		end
 
 		for player in pairs(cachedPlayers) do
@@ -2123,20 +2020,20 @@ do
 			if player.Character then
 				hookCharacter(player.Character, player)
 			end
-			NnBind.reconnect("nvf_charAdded_" .. player.Name, player.CharacterAdded:Connect(function(char)
+			Bind:Connect(player.CharacterAdded, function(char)
 				hookCharacter(char, player)
-			end))
+			end, "nvf_charAdded_" .. player.Name)
 		end
 
-		NnBind.reconnect("nvf_playerAdded", PlayerAdded:Connect(function(player)
+		Bind:Connect(PlayerAdded, function(player)
 			if player == LocalPlayer then return end
 			if player.Character then
 				hookCharacter(player.Character, player)
 			end
-			NnBind.reconnect("nvf_charAdded_" .. player.Name, player.CharacterAdded:Connect(function(char)
+			Bind:Connect(player.CharacterAdded, function(char)
 				hookCharacter(char, player)
-			end))
-		end))
+			end, "nvf_charAdded_" .. player.Name)
+		end, "nvf_playerAdded")
 
 		nvfHooksActive = true
 	end
@@ -2147,7 +2044,7 @@ func.feat.antiAfk = function(mode)
 	if mode ~= nil then
 		notify("geist:cursor-click", 3, "Anti-AFK", "Enabled (" .. tostring(mode) .. ").", true)
 	end
-	task.spawn(function()
+	ThreadPool:Spawn(function()
 		while afkMode do
 			task.wait(60)
 			if Vim then
@@ -2204,8 +2101,8 @@ Cmd.add({"loopwalkspeed", "loopws", "lws"}, {
 
 Cmd.add({"unloopwalkspeed", "unloopws", "unlws"}, {
 	fn = function()
-		NnBind.disconnect("ws_changed")
-		NnBind.disconnect("ws_charAdded")
+		Bind:Disconnect("ws_changed")
+		Bind:Disconnect("ws_charAdded")
 		notify("geist:loader-circle", 3, "LoopWalkSpeed", "Loop stopped.", true)
 	end,
 })
@@ -2218,7 +2115,7 @@ Cmd.add({"tpwalkspeed", "tpwalk"}, {
 		local maxSteps = 3
 		local accumulator = 0
 		notify("sfsymbols:hareFill", 3, "TpWalkSpeed", "TP walk set to " .. tostring(speed), true)
-		NnBind.reconnect("tpwalk", RunService.Heartbeat:Connect(function(deltaTime)
+		Bind:Connect(RunService.Heartbeat, function(deltaTime)
 			accumulator = math.min(accumulator + (tonumber(deltaTime) or 0), stepRate * maxSteps)
 			local humanoid = playerHum
 			if not humanoid or not playerChar or humanoid.MoveDirection.Magnitude <= 0 then return end
@@ -2228,13 +2125,13 @@ Cmd.add({"tpwalkspeed", "tpwalk"}, {
 				accumulator -= stepRate
 				steps += 1
 			end
-		end))
+		end, "tpwalk")
 	end,
 })
 
 Cmd.add({"untpwalkspeed", "untpwalk"}, {
 	fn = function()
-		NnBind.disconnect("tpwalk")
+		Bind:Disconnect("tpwalk")
 		notify("sfsymbols:tortoiseFill", 3, "TpWalkSpeed", "TP walk stopped.", true)
 	end,
 })
@@ -2264,20 +2161,20 @@ Cmd.add({"loopjumppower", "loopjp"}, {
 			local hum = char and char:WaitForChild("Humanoid")
 			if not hum then return end
 			hum.JumpPower = power
-			NnBind.reconnect("jp_changed", hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
+			Bind:Connect(hum:GetPropertyChangedSignal("JumpPower"), function()
 				if hum.JumpPower ~= power then hum.JumpPower = power end
-			end))
+			end, "jp_changed")
 		end
 		apply()
-		NnBind.reconnect("jp_charAdded", CharacterAdded:Connect(apply))
+		Bind:Connect(CharacterAdded, apply, "jp_charAdded")
 		notify("geist:loader-circle", 3, "LoopJumpPower", "Looping at " .. tostring(power), true)
 	end,
 })
 
 Cmd.add({"unloopjumppower", "unloopjp"}, {
 	fn = function()
-		NnBind.disconnect("jp_changed")
-		NnBind.disconnect("jp_charAdded")
+		Bind:Disconnect("jp_changed")
+		Bind:Disconnect("jp_charAdded")
 		notify("geist:loader-circle", 3, "LoopJumpPower", "Loop stopped.", true)
 	end,
 })
@@ -2496,10 +2393,10 @@ Cmd.add({"noclip", "nc"}, {
 
 Cmd.add({"unnoclip", "clip", "unnc"}, {
 	fn = function()
-		NnBind.disconnect("noclip_added")
-		NnBind.disconnect("noclip_removing")
-		NnBind.disconnect("noclip_charAdded")
-		NnBind.disconnect("noclip_stepped")
+		Bind:Disconnect("noclip_added")
+		Bind:Disconnect("noclip_removing")
+		Bind:Disconnect("noclip_charAdded")
+		Bind:Disconnect("noclip_stepped")
 		for part in pairs(noclipParts) do
 			part.CanCollide = true
 		end
@@ -2514,9 +2411,9 @@ Cmd.add({"invisible", "invis"}, {
 
 Cmd.add({"uninvisible", "uninvis"}, {
 	fn = function()
-		NnBind.disconnect("invis_transparency")
-		NnBind.disconnect("invis_heartbeat")
-		NnBind.disconnect("invis_charAdded")
+		Bind:Disconnect("invis_transparency")
+		Bind:Disconnect("invis_heartbeat")
+		Bind:Disconnect("invis_charAdded")
 
 		local char = playerChar
 		if char then
@@ -2622,9 +2519,9 @@ Cmd.add({"antivoid"}, {
 
 Cmd.add({"unantivoid"}, {
 	fn = function()
-		NnBind.disconnect("antivoid_health")
-		NnBind.disconnect("antivoid_fpdh")
-		NnBind.disconnect("antivoid_char")
+		Bind:Disconnect("antivoid_health")
+		Bind:Disconnect("antivoid_fpdh")
+		Bind:Disconnect("antivoid_char")
 		local platform = workspace:FindFirstChild("VoidPlatform")
 		if platform then
 			platform:Destroy()
@@ -2671,18 +2568,18 @@ Cmd.add({"loopminzoom"}, {
 		value = tonumber(value)
 		if not value then return end
 		LocalPlayer.CameraMinZoomDistance = value
-		NnBind.reconnect("loopminzoom", LocalPlayer:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
+		Bind:Connect(LocalPlayer:GetPropertyChangedSignal("CameraMinZoomDistance"), function()
 			if LocalPlayer.CameraMinZoomDistance ~= value then
 				LocalPlayer.CameraMinZoomDistance = value
 			end
-		end))
+		end, "loopminzoom")
 		notify("lucide:zoom-in", 3, "LoopMinZoom", "Looping at " .. tostring(value), true)
 	end,
 })
 
 Cmd.add({"unloopminzoom"}, {
 	fn = function()
-		NnBind.disconnect("loopminzoom")
+		Bind:Disconnect("loopminzoom")
 		notify("lucide:zoom-in", 3, "LoopMinZoom", "Loop stopped.", true)
 	end,
 })
@@ -2693,18 +2590,18 @@ Cmd.add({"loopmaxzoom"}, {
 		value = tonumber(value)
 		if not value then return end
 		LocalPlayer.CameraMaxZoomDistance = value
-		NnBind.reconnect("loopmaxzoom", LocalPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
+		Bind:Connect(LocalPlayer:GetPropertyChangedSignal("CameraMaxZoomDistance"), function()
 			if LocalPlayer.CameraMaxZoomDistance ~= value then
 				LocalPlayer.CameraMaxZoomDistance = value
 			end
-		end))
+		end, "loopmaxzoom")
 		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Looping at " .. tostring(value), true)
 	end,
 })
 
 Cmd.add({"unloopmaxzoom"}, {
 	fn = function()
-		NnBind.disconnect("loopmaxzoom")
+		Bind:Disconnect("loopmaxzoom")
 		notify("lucide:zoom-out", 3, "LoopMaxZoom", "Loop stopped.", true)
 	end,
 })
@@ -2775,7 +2672,7 @@ Cmd.add({"instantproximityprompt", "instantpp", "ipp"}, {
 
 Cmd.add({"uninstantproximityprompt", "uninstantpp", "unipp"}, {
 	fn = function()
-		NnBind.disconnect("ipp_added")
+		Bind:Disconnect("ipp_added")
 		notify("sfsymbols:handTapFill", 3, "InstantPP", "Instant proximity prompts disabled.", true)
 	end,
 })
@@ -2832,29 +2729,29 @@ Cmd.add({"walkfling", "wf"}, {
 			cacheParts(playerChar)
 		end
 
-		NnBind.reconnect("walkfling_charAdded", CharacterAdded:Connect(function(char)
+		Bind:Connect(CharacterAdded, function(char)
 			cacheParts(char)
-		end))
+		end, "walkfling_charAdded")
 
-		NnBind.reconnect("walkfling_heartbeat", RunService.Heartbeat:Connect(function()
+		Bind:Connect(RunService.Heartbeat, function()
 			if #cachedParts == 0 then return end
 			for _, part in ipairs(cachedParts) do
-				task.spawn(function()
+				ThreadPool:Spawn(function()
 					local v = part.Velocity
 					part.Velocity = v * power + Vector3.new(powers, powers, powers)
 					RunService.RenderStepped:Wait()
 					part.Velocity = v
 				end)
 			end
-		end))
+		end, "walkfling_heartbeat")
 		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling enabled.", true)
 	end,
 })
 
 Cmd.add({"unwalkfling", "unwf"}, {
 	fn = function()
-		NnBind.disconnect("walkfling_heartbeat")
-		NnBind.disconnect("walkfling_charAdded")
+		Bind:Disconnect("walkfling_heartbeat")
+		Bind:Disconnect("walkfling_charAdded")
 		notify("sfsymbols:wind", 3, "WalkFling", "Walk fling disabled.", true)
 	end,
 })
@@ -2974,7 +2871,7 @@ Cmd.add({"teleport", "tp", "goto"}, {
 Cmd.add({"infinitejump", "infjump"}, {
 	fn = function()
 		local lastJump = 0
-		NnBind.reconnect("ij_jumped", UserInputService.JumpRequest:Connect(function()
+		Bind:Connect(UserInputService.JumpRequest, function()
 			local hum = playerHum
 			if not hum then
 				notify("lucide:triangle-alert", 3, "Infinite Jump", "No character found.", false)
@@ -2984,14 +2881,14 @@ Cmd.add({"infinitejump", "infjump"}, {
 			if now - lastJump < 0.05 then return end
 			lastJump = now
 			hum:ChangeState(Enum.HumanoidStateType.Jumping)
-		end))
+		end, "ij_jumped")
 		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Enabled.", true)
 	end,
 })
 
 Cmd.add({"uninfinitejump", "uninfjump"}, {
 	fn = function()
-		NnBind.disconnect("ij_jumped")
+		Bind:Disconnect("ij_jumped")
 		notify("sfsymbols:arrowUpAndDownCircleFill", 3, "Infinite Jump", "Disabled.", true)
 	end,
 })
@@ -3069,6 +2966,11 @@ Cmd.add({"smallserverhop", "sshop"}, {
 
 Cmd.add({"settings"}, {
 	fn = function()
+		if not rare.libraryReady then
+			warn("[Noname] Library not loaded yet.")
+			return
+		end
+
 		local win = Library:Window({
 			Title = "Noname Settings",
 			Size = UDim2.fromOffset(500, 420),
@@ -3248,17 +3150,17 @@ Cmd.add({"autoclicker", "autoclick"}, {
 
 Cmd.add({"admin"}, {
 	fn = function()
-		NnBind.reconnect("admin_chat", LocalPlayer.Chatted:Connect(function(msg)
+		Bind:Connect(LocalPlayer.Chatted, function(msg)
 			if msg:sub(1, 1) ~= rare.cmdPrefix then return end
 			runCommand(msg:sub(2))
-		end))
+		end, "admin_chat")
 		notify("geist:code-bracket", 3, "Admin", "Chat commands enabled.", true)
 	end,
 })
 
 Cmd.add({"unadmin"}, {
 	fn = function()
-		NnBind.disconnect("admin_chat")
+		Bind:Disconnect("admin_chat")
 		notify("geist:code-bracket", 3, "Admin", "Chat commands disabled.", true)
 	end,
 })
@@ -3316,12 +3218,12 @@ Cmd.add({"godmode", "god"}, {
 
 Cmd.add({"ungodMode", "ungod"}, {
 	fn = function()
-		NnBind.disconnect("gm_healthChanged")
-		NnBind.disconnect("gm_health")
-		NnBind.disconnect("gm_maxHealth")
-		NnBind.disconnect("gm_breakJoints")
-		NnBind.disconnect("gm_stateChanged")
-		NnBind.disconnect("gm_charAdded")
+		Bind:Disconnect("gm_healthChanged")
+		Bind:Disconnect("gm_health")
+		Bind:Disconnect("gm_maxHealth")
+		Bind:Disconnect("gm_breakJoints")
+		Bind:Disconnect("gm_stateChanged")
+		Bind:Disconnect("gm_charAdded")
 
 		rare.god_mode = nil
 
@@ -3386,18 +3288,18 @@ Cmd.add({"spin"}, {
 		applySpin(hrp)
 		notify("sfsymbols:rotateRightFill", 3, "Spin", "Spin enabled.", true)
 
-		NnBind.reconnect("spin_charAdded", CharacterAdded:Connect(function(newChar)
+		Bind:Connect(CharacterAdded, function(newChar)
 			local newHrp = newChar:WaitForChild("HumanoidRootPart")
 			hum = newChar:WaitForChild("Humanoid")
 			hum.AutoRotate = false
 			applySpin(newHrp)
-		end))
+		end, "spin_charAdded")
 	end,
 })
 
 Cmd.add({"unspin"}, {
 	fn = function()
-		NnBind.disconnect("spin_charAdded")
+		Bind:Disconnect("spin_charAdded")
 		if rare.spinBav then
      rare.spinBav:Destroy()
      rare.spinBav = nil end
@@ -3493,43 +3395,43 @@ Cmd.add({"aimlock"}, {
 				if player.Character then
 					charCache[player] = player.Character
 				end
-				NnBind.reconnect("aimlock_charadded_" .. player.UserId, player.CharacterAdded:Connect(function(char)
+				Bind:Connect(player.CharacterAdded, function(char)
 					charCache[player] = char
 					if lockedTarget and not lockedTarget.Parent then
 						lockedTarget = nil
 					end
-				end))
+				end, "aimlock_charadded_" .. player.UserId)
 			end
 
-			NnBind.reconnect("aimlock_playeradded", PlayerAdded:Connect(function(player)
+			Bind:Connect(PlayerAdded, function(player)
 				if player.Character then
 					charCache[player] = player.Character
 				end
-				NnBind.reconnect("aimlock_charadded_" .. player.UserId, player.CharacterAdded:Connect(function(char)
+				Bind:Connect(player.CharacterAdded, function(char)
 					charCache[player] = char
 					if lockedTarget and not lockedTarget.Parent then
 						lockedTarget = nil
 					end
-				end))
-			end))
+				end, "aimlock_charadded_" .. player.UserId)
+			end, "aimlock_playeradded")
 
-			NnBind.reconnect("aimlock_playerremoving", PlayerRemoving:Connect(function(player)
+			Bind:Connect(PlayerRemoving, function(player)
 				if lockedTarget == charCache[player] then
 					lockedTarget = nil
 				end
 				charCache[player] = nil
-				NnBind.disconnect("aimlock_charadded_" .. player.UserId)
-			end))
+				Bind:Disconnect("aimlock_charadded_" .. player.UserId)
+			end, "aimlock_playerremoving")
 
 			Camera.CameraType = Enum.CameraType.Track
 			notify("sfsymbols:target", 3, "Aimlock", "Aimlock enabled (" .. targetPartName .. ").", true)
 
-			NnBind.reconnect("aimlock_camtype", Camera:GetPropertyChangedSignal("CameraType"):Connect(function()
+			Bind:Connect(Camera:GetPropertyChangedSignal("CameraType"), function()
 				local ct = Camera.CameraType
 				if ct ~= Enum.CameraType.Scriptable and ct ~= Enum.CameraType.Track then
 					Camera.CameraType = Enum.CameraType.Track
 				end
-			end))
+			end, "aimlock_camtype")
 
 			rare.aimlockGui = NewInstance("ScreenGui")
 			rare.aimlockGui.ResetOnSpawn = false
@@ -3550,7 +3452,7 @@ Cmd.add({"aimlock"}, {
 			stroke.Color = Color3.fromRGB(255, 255, 255)
 			stroke.Thickness = 1
 
-			NnBind.reconnect("aimlock_stepped", RunService.RenderStepped:Connect(function()
+			Bind:Connect(RunService.RenderStepped, function()
 				local vp = Camera.ViewportSize
 				local screenCenter = Vector2.new(vp.X / 2, vp.Y / 2)
 
@@ -3616,19 +3518,19 @@ Cmd.add({"aimlock"}, {
 						Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, predictPosition(aimPart))
 					end
 				end
-			end))
+			end, "aimlock_stepped")
 		end)
 	end,
 })
 
 Cmd.add({"unaimlock"}, {
 	fn = function()
-		NnBind.disconnect("aimlock_stepped")
-		NnBind.disconnect("aimlock_camtype")
-		NnBind.disconnect("aimlock_playeradded")
-		NnBind.disconnect("aimlock_playerremoving")
+		Bind:Disconnect("aimlock_stepped")
+		Bind:Disconnect("aimlock_camtype")
+		Bind:Disconnect("aimlock_playeradded")
+		Bind:Disconnect("aimlock_playerremoving")
 		for player in pairs(cachedPlayers) do
-			NnBind.disconnect("aimlock_charadded_" .. player.UserId)
+			Bind:Disconnect("aimlock_charadded_" .. player.UserId)
 		end
 		if rare.aimlockGui then
 			rare.aimlockGui:Destroy()
@@ -3659,7 +3561,7 @@ Cmd.add({"SilentAim", "SA"}, {
 			local mouse = LocalPlayer:GetMouse()
 			local saTarget = nil
 
-			NnBind.reconnect("sa_candidates", RunService.Heartbeat:Connect(function()
+			Bind:Connect(RunService.Heartbeat, function()
 				local best, bestDist = nil, math.huge
 
 				if isNear then
@@ -3701,7 +3603,7 @@ Cmd.add({"SilentAim", "SA"}, {
 				end
 
 				saTarget = best
-			end))
+			end, "sa_candidates")
 
 			rare.saHookOriginal = safehook(game, "__index", function(self, key)
 				if self == mouse and rare.saHookOriginal and (key == "Hit" or key == "Target" or key == "UnitRay") then
@@ -3721,7 +3623,7 @@ Cmd.add({"SilentAim", "SA"}, {
 
 			if not rare.saHookOriginal then
 				notify("lucide:triangle-alert", 4, "SilentAim", "Hook failed — metamethod hooking not supported.", false)
-				NnBind.disconnect("sa_candidates")
+				Bind:Disconnect("sa_candidates")
 				return
 			end
 
@@ -3751,29 +3653,29 @@ Cmd.add({"SilentAim", "SA"}, {
 
 				local holding = false
 
-				NnBind.reconnect("sa_mouse", RunService.RenderStepped:Connect(function()
+				Bind:Connect(RunService.RenderStepped, function()
 					if holding and rare.saCircle then
 						local mp = UserInputService:GetMouseLocation()
 						rare.saCircle.Position = UDim2.fromOffset(mp.X, mp.Y)
 					end
-				end))
+				end, "sa_mouse")
 
-				NnBind.reconnect("sa_press", UserInputService.InputBegan:Connect(function(input, gpe)
+				Bind:Connect(UserInputService.InputBegan, function(input, gpe)
 					if gpe then return end
 					local t = input.UserInputType
 					if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
 						holding = true
 						if rare.saCircle then rare.saCircle.Visible = true end
 					end
-				end))
+				end, "sa_press")
 
-				NnBind.reconnect("sa_release", UserInputService.InputEnded:Connect(function(input)
+				Bind:Connect(UserInputService.InputEnded, function(input)
 					local t = input.UserInputType
 					if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
 						holding = false
 						if rare.saCircle then rare.saCircle.Visible = false end
 					end
-				end))
+				end, "sa_release")
 			end
 
 			notify("sfsymbols:target", 3, "SilentAim", "Enabled (" .. targetPart .. ", " .. (isNear and "near" or "fov " .. fov) .. ").", true)
@@ -3793,10 +3695,10 @@ Cmd.add({"UnSilentAim", "UnSA"}, {
 		end
 		rare.saCircle = nil
 		rare.saActive = false
-		NnBind.disconnect("sa_candidates")
-		NnBind.disconnect("sa_mouse")
-		NnBind.disconnect("sa_press")
-		NnBind.disconnect("sa_release")
+		Bind:Disconnect("sa_candidates")
+		Bind:Disconnect("sa_mouse")
+		Bind:Disconnect("sa_press")
+		Bind:Disconnect("sa_release")
 		notify("sfsymbols:target", 3, "SilentAim", "Silent aim disabled.", true)
 	end,
 })
@@ -3819,37 +3721,37 @@ Cmd.add({"hitbox", "hb"}, {
 					hrp.Size = hitboxSize
 					hrp.Transparency = transparency
 					hrp.CanCollide = false
-					NnBind.reconnect("hitbox_sizechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Size"):Connect(function()
+					Bind:Connect(hrp:GetPropertyChangedSignal("Size"), function()
 						if hrp.Size ~= hitboxSize then hrp.Size = hitboxSize end
-					end))
-					NnBind.reconnect("hitbox_transchanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Transparency"):Connect(function()
+					end, "hitbox_sizechanged_" .. tostring(hrp))
+					Bind:Connect(hrp:GetPropertyChangedSignal("Transparency"), function()
 						if hrp.Transparency ~= transparency then hrp.Transparency = transparency end
-					end))
-					NnBind.reconnect("hitbox_cancollidechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("CanCollide"):Connect(function()
+					end, "hitbox_transchanged_" .. tostring(hrp))
+					Bind:Connect(hrp:GetPropertyChangedSignal("CanCollide"), function()
 						if hrp.CanCollide then hrp.CanCollide = false end
-					end))
+					end, "hitbox_cancollidechanged_" .. tostring(hrp))
 				end
 			end
-			NnBind.reconnect("hitbox_charadded_" .. player.UserId, player.CharacterAdded:Connect(function(char)
+			Bind:Connect(player.CharacterAdded, function(char)
 				if ignoreTeamOpts.hitbox and LocalPlayer.Team and player.Team == LocalPlayer.Team then return end
 				local hrp = char:WaitForChild("HumanoidRootPart")
 				rare.hitboxOriginals[char] = hrp.Size
 				hrp.Size = hitboxSize
 				hrp.Transparency = transparency
 				hrp.CanCollide = false
-				NnBind.reconnect("hitbox_sizechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Size"):Connect(function()
+				Bind:Connect(hrp:GetPropertyChangedSignal("Size"), function()
 					if hrp.Size ~= hitboxSize then hrp.Size = hitboxSize end
-				end))
-				NnBind.reconnect("hitbox_transchanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Transparency"):Connect(function()
+				end, "hitbox_sizechanged_" .. tostring(hrp))
+				Bind:Connect(hrp:GetPropertyChangedSignal("Transparency"), function()
 					if hrp.Transparency ~= transparency then hrp.Transparency = transparency end
-				end))
-				NnBind.reconnect("hitbox_cancollidechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("CanCollide"):Connect(function()
+				end, "hitbox_transchanged_" .. tostring(hrp))
+				Bind:Connect(hrp:GetPropertyChangedSignal("CanCollide"), function()
 					if hrp.CanCollide then hrp.CanCollide = false end
-				end))
-			end))
+				end, "hitbox_cancollidechanged_" .. tostring(hrp))
+			end, "hitbox_charadded_" .. player.UserId)
 		end
 
-		NnBind.reconnect("hitbox_playeradded", PlayerAdded:Connect(function(player)
+		Bind:Connect(PlayerAdded, function(player)
 			if ignoreTeamOpts.hitbox and LocalPlayer.Team and player.Team == LocalPlayer.Team then return end
 			if player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
@@ -3858,46 +3760,46 @@ Cmd.add({"hitbox", "hb"}, {
 					hrp.Size = hitboxSize
 					hrp.Transparency = transparency
 					hrp.CanCollide = false
-					NnBind.reconnect("hitbox_sizechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Size"):Connect(function()
+					Bind:Connect(hrp:GetPropertyChangedSignal("Size"), function()
 						if hrp.Size ~= hitboxSize then hrp.Size = hitboxSize end
-					end))
-					NnBind.reconnect("hitbox_transchanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Transparency"):Connect(function()
+					end, "hitbox_sizechanged_" .. tostring(hrp))
+					Bind:Connect(hrp:GetPropertyChangedSignal("Transparency"), function()
 						if hrp.Transparency ~= transparency then hrp.Transparency = transparency end
-					end))
-					NnBind.reconnect("hitbox_cancollidechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("CanCollide"):Connect(function()
+					end, "hitbox_transchanged_" .. tostring(hrp))
+					Bind:Connect(hrp:GetPropertyChangedSignal("CanCollide"), function()
 						if hrp.CanCollide then hrp.CanCollide = false end
-					end))
+					end, "hitbox_cancollidechanged_" .. tostring(hrp))
 				end
 			end
-			NnBind.reconnect("hitbox_charadded_" .. player.UserId, player.CharacterAdded:Connect(function(char)
+			Bind:Connect(player.CharacterAdded, function(char)
 				local hrp = char:WaitForChild("HumanoidRootPart")
 				rare.hitboxOriginals[char] = hrp.Size
 				hrp.Size = hitboxSize
 				hrp.Transparency = transparency
 				hrp.CanCollide = false
-				NnBind.reconnect("hitbox_sizechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Size"):Connect(function()
+				Bind:Connect(hrp:GetPropertyChangedSignal("Size"), function()
 					if hrp.Size ~= hitboxSize then hrp.Size = hitboxSize end
-				end))
-				NnBind.reconnect("hitbox_transchanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("Transparency"):Connect(function()
+				end, "hitbox_sizechanged_" .. tostring(hrp))
+				Bind:Connect(hrp:GetPropertyChangedSignal("Transparency"), function()
 					if hrp.Transparency ~= transparency then hrp.Transparency = transparency end
-				end))
-				NnBind.reconnect("hitbox_cancollidechanged_" .. tostring(hrp), hrp:GetPropertyChangedSignal("CanCollide"):Connect(function()
+				end, "hitbox_transchanged_" .. tostring(hrp))
+				Bind:Connect(hrp:GetPropertyChangedSignal("CanCollide"), function()
 					if hrp.CanCollide then hrp.CanCollide = false end
-				end))
-			end))
-		end))
+				end, "hitbox_cancollidechanged_" .. tostring(hrp))
+			end, "hitbox_charadded_" .. player.UserId)
+		end, "hitbox_playeradded")
 
-		NnBind.reconnect("hitbox_playerremoving", PlayerRemoving:Connect(function(player)
-			NnBind.disconnect("hitbox_charadded_" .. player.UserId)
+		Bind:Connect(PlayerRemoving, function(player)
+			Bind:Disconnect("hitbox_charadded_" .. player.UserId)
 			if player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
-					NnBind.disconnect("hitbox_sizechanged_" .. tostring(hrp))
-					NnBind.disconnect("hitbox_transchanged_" .. tostring(hrp))
-					NnBind.disconnect("hitbox_cancollidechanged_" .. tostring(hrp))
+					Bind:Disconnect("hitbox_sizechanged_" .. tostring(hrp))
+					Bind:Disconnect("hitbox_transchanged_" .. tostring(hrp))
+					Bind:Disconnect("hitbox_cancollidechanged_" .. tostring(hrp))
 				end
 			end
-		end))
+		end, "hitbox_playerremoving")
 
 		notify("lucide:box", 3, "Hitbox", "Hitbox set to " .. tostring(size) .. ".", true)
 	end,
@@ -3905,16 +3807,16 @@ Cmd.add({"hitbox", "hb"}, {
 
 Cmd.add({"unhitbox", "unhb"}, {
 	fn = function()
-		NnBind.disconnect("hitbox_playeradded")
-		NnBind.disconnect("hitbox_playerremoving")
+		Bind:Disconnect("hitbox_playeradded")
+		Bind:Disconnect("hitbox_playerremoving")
 		for player in pairs(cachedPlayers) do
-			NnBind.disconnect("hitbox_charadded_" .. player.UserId)
+			Bind:Disconnect("hitbox_charadded_" .. player.UserId)
 			if player ~= LocalPlayer and player.Character then
 				local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 				if hrp then
-					NnBind.disconnect("hitbox_sizechanged_" .. tostring(hrp))
-					NnBind.disconnect("hitbox_transchanged_" .. tostring(hrp))
-					NnBind.disconnect("hitbox_cancollidechanged_" .. tostring(hrp))
+					Bind:Disconnect("hitbox_sizechanged_" .. tostring(hrp))
+					Bind:Disconnect("hitbox_transchanged_" .. tostring(hrp))
+					Bind:Disconnect("hitbox_cancollidechanged_" .. tostring(hrp))
 					if rare.hitboxOriginals[player.Character] then
 						hrp.Size = rare.hitboxOriginals[player.Character]
 					end
@@ -3969,7 +3871,7 @@ Cmd.add({"loopcbring", "loopclientb", "loppclientb", "loopclientbring", "lcbring
 			end
 		end
 
-		NnBind.reconnect("loopcbring_heartbeat", RunService.Heartbeat:Connect(function()
+		Bind:Connect(RunService.Heartbeat, function()
 			local myHrp = playerHRP
 			if not myHrp then return end
 
@@ -3980,7 +3882,7 @@ Cmd.add({"loopcbring", "loopclientb", "loppclientb", "loopclientbring", "lcbring
 					hrp.CFrame = myHrp.CFrame * CFrame.new(0, 0, -5)
 				end
 			end
-		end))
+		end, "loopcbring_heartbeat")
 		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring enabled.", true)
 	end,
 })
@@ -3990,14 +3892,14 @@ Cmd.add({"unloopcbring", "unloopclientb", "unloopcientb", "unlcbring", "unlclien
 	fn = function(...)
 		local names = {...}
 		if #names == 0 or names[1]:lower() == "all" then
-			NnBind.disconnect("loopcbring_heartbeat")
+			Bind:Disconnect("loopcbring_heartbeat")
 			table.clear(loopBringTargets)
 		else
 			for _, player in ipairs({prefixMatch(table.unpack(names))}) do
 				loopBringTargets[player] = nil
 			end
 			if not next(loopBringTargets) then
-				NnBind.disconnect("loopcbring_heartbeat")
+				Bind:Disconnect("loopcbring_heartbeat")
 			end
 		end
 		notify("sfsymbols:person2Fill", 3, "LoopCBring", "Loop bring disabled.", true)
@@ -4043,25 +3945,25 @@ Cmd.add({"fpsbooster", "lowgraphics", "boostfps", "lowg", "antilag"}, {
 			obj:Destroy()
 		end
 
-		NnBind.reconnect("fpsboost_lightingchildadded", Lighting.ChildAdded:Connect(function(obj)
+		Bind:Connect(Lighting.ChildAdded, function(obj)
 			obj:Destroy()
-		end))
+		end, "fpsboost_lightingchildadded")
 
-		NnBind.reconnect("fpsboost_QualityLevel", rs:GetPropertyChangedSignal("QualityLevel"):Connect(function() if rs["QualityLevel"] ~= TargetQuality then rs["QualityLevel"] = TargetQuality end end))
-		NnBind.reconnect("fpsboost_EagerBulkExecution", rs:GetPropertyChangedSignal("EagerBulkExecution"):Connect(function() if rs["EagerBulkExecution"] ~= true then rs["EagerBulkExecution"] = true end end))
-		NnBind.reconnect("fpsboost_MeshPartDetailLevel", rs:GetPropertyChangedSignal("MeshPartDetailLevel"):Connect(function() if rs["MeshPartDetailLevel"] ~= Enum.MeshPartDetailLevel.Level01 then rs["MeshPartDetailLevel"] = Enum.MeshPartDetailLevel.Level01 end end))
-		NnBind.reconnect("fpsboost_GlobalShadows", Lighting:GetPropertyChangedSignal("GlobalShadows"):Connect(function() if Lighting["GlobalShadows"] ~= false then Lighting["GlobalShadows"] = false end end))
-		NnBind.reconnect("fpsboost_FogEnd", Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function() if Lighting["FogEnd"] ~= 9e9 then Lighting["FogEnd"] = 9e9 end end))
-		NnBind.reconnect("fpsboost_FogStart", Lighting:GetPropertyChangedSignal("FogStart"):Connect(function() if Lighting["FogStart"] ~= 9e9 then Lighting["FogStart"] = 9e9 end end))
-		NnBind.reconnect("fpsboost_EnvironmentDiffuseScale", Lighting:GetPropertyChangedSignal("EnvironmentDiffuseScale"):Connect(function() if Lighting["EnvironmentDiffuseScale"] ~= 0 then Lighting["EnvironmentDiffuseScale"] = 0 end end))
-		NnBind.reconnect("fpsboost_EnvironmentSpecularScale", Lighting:GetPropertyChangedSignal("EnvironmentSpecularScale"):Connect(function() if Lighting["EnvironmentSpecularScale"] ~= 0 then Lighting["EnvironmentSpecularScale"] = 0 end end))
-		NnBind.reconnect("fpsboost_Technology", Lighting:GetPropertyChangedSignal("Technology"):Connect(function() if Lighting["Technology"] ~= Enum.Technology.Compatibility then Lighting["Technology"] = Enum.Technology.Compatibility end end))
-		NnBind.reconnect("fpsboost_WaterReflectance", terrain:GetPropertyChangedSignal("WaterReflectance"):Connect(function() if terrain["WaterReflectance"] ~= 0 then terrain["WaterReflectance"] = 0 end end))
-		NnBind.reconnect("fpsboost_WaterWaveSize", terrain:GetPropertyChangedSignal("WaterWaveSize"):Connect(function() if terrain["WaterWaveSize"] ~= 0 then terrain["WaterWaveSize"] = 0 end end))
-		NnBind.reconnect("fpsboost_WaterWaveSpeed", terrain:GetPropertyChangedSignal("WaterWaveSpeed"):Connect(function() if terrain["WaterWaveSpeed"] ~= 0 then terrain["WaterWaveSpeed"] = 0 end end))
-		NnBind.reconnect("fpsboost_GlobalWind", workspace:GetPropertyChangedSignal("GlobalWind"):Connect(function() if workspace["GlobalWind"] ~= Vector3.zero then workspace["GlobalWind"] = Vector3.zero end end))
-		NnBind.reconnect("fpsboost_LevelOfDetail", workspace:GetPropertyChangedSignal("LevelOfDetail"):Connect(function() if workspace["LevelOfDetail"] ~= Enum.ModelLevelOfDetail.Disabled then workspace["LevelOfDetail"] = Enum.ModelLevelOfDetail.Disabled end end))
-		NnBind.reconnect("fpsboost_InterpolationThrottling", workspace:GetPropertyChangedSignal("InterpolationThrottling"):Connect(function() if workspace["InterpolationThrottling"] ~= Enum.InterpolationThrottlingMode.Enabled then workspace["InterpolationThrottling"] = Enum.InterpolationThrottlingMode.Enabled end end))
+		Bind:Connect(rs:GetPropertyChangedSignal("QualityLevel"), function() if rs["QualityLevel"] ~= TargetQuality then rs["QualityLevel"] = TargetQuality end end, "fpsboost_QualityLevel")
+		Bind:Connect(rs:GetPropertyChangedSignal("EagerBulkExecution"), function() if rs["EagerBulkExecution"] ~= true then rs["EagerBulkExecution"] = true end end, "fpsboost_EagerBulkExecution")
+		Bind:Connect(rs:GetPropertyChangedSignal("MeshPartDetailLevel"), function() if rs["MeshPartDetailLevel"] ~= Enum.MeshPartDetailLevel.Level01 then rs["MeshPartDetailLevel"] = Enum.MeshPartDetailLevel.Level01 end end, "fpsboost_MeshPartDetailLevel")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("GlobalShadows"), function() if Lighting["GlobalShadows"] ~= false then Lighting["GlobalShadows"] = false end end, "fpsboost_GlobalShadows")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("FogEnd"), function() if Lighting["FogEnd"] ~= 9e9 then Lighting["FogEnd"] = 9e9 end end, "fpsboost_FogEnd")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("FogStart"), function() if Lighting["FogStart"] ~= 9e9 then Lighting["FogStart"] = 9e9 end end, "fpsboost_FogStart")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("EnvironmentDiffuseScale"), function() if Lighting["EnvironmentDiffuseScale"] ~= 0 then Lighting["EnvironmentDiffuseScale"] = 0 end end, "fpsboost_EnvironmentDiffuseScale")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("EnvironmentSpecularScale"), function() if Lighting["EnvironmentSpecularScale"] ~= 0 then Lighting["EnvironmentSpecularScale"] = 0 end end, "fpsboost_EnvironmentSpecularScale")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("Technology"), function() if Lighting["Technology"] ~= Enum.Technology.Compatibility then Lighting["Technology"] = Enum.Technology.Compatibility end end, "fpsboost_Technology")
+		Bind:Connect(terrain:GetPropertyChangedSignal("WaterReflectance"), function() if terrain["WaterReflectance"] ~= 0 then terrain["WaterReflectance"] = 0 end end, "fpsboost_WaterReflectance")
+		Bind:Connect(terrain:GetPropertyChangedSignal("WaterWaveSize"), function() if terrain["WaterWaveSize"] ~= 0 then terrain["WaterWaveSize"] = 0 end end, "fpsboost_WaterWaveSize")
+		Bind:Connect(terrain:GetPropertyChangedSignal("WaterWaveSpeed"), function() if terrain["WaterWaveSpeed"] ~= 0 then terrain["WaterWaveSpeed"] = 0 end end, "fpsboost_WaterWaveSpeed")
+		Bind:Connect(workspace:GetPropertyChangedSignal("GlobalWind"), function() if workspace["GlobalWind"] ~= Vector3.zero then workspace["GlobalWind"] = Vector3.zero end end, "fpsboost_GlobalWind")
+		Bind:Connect(workspace:GetPropertyChangedSignal("LevelOfDetail"), function() if workspace["LevelOfDetail"] ~= Enum.ModelLevelOfDetail.Disabled then workspace["LevelOfDetail"] = Enum.ModelLevelOfDetail.Disabled end end, "fpsboost_LevelOfDetail")
+		Bind:Connect(workspace:GetPropertyChangedSignal("InterpolationThrottling"), function() if workspace["InterpolationThrottling"] ~= Enum.InterpolationThrottlingMode.Enabled then workspace["InterpolationThrottling"] = Enum.InterpolationThrottlingMode.Enabled end end, "fpsboost_InterpolationThrottling")
 
 		local SmoothPlastic = Enum.Material.SmoothPlastic
 		local optimized = setmetatable({}, {__mode = "k"})
@@ -4095,9 +3997,23 @@ Cmd.add({"fpsbooster", "lowgraphics", "boostfps", "lowg", "antilag"}, {
 			optimize(obj)
 		end
 
-		NnBind.reconnect("fpsboost_descendantadded", workspace.DescendantAdded:Connect(optimize))
+		Bind:Connect(workspace.DescendantAdded, optimize, "fpsboost_descendantadded")
 
 		notify("lucide:zap", 4, "FPS Booster", "Low graphics applied. Rejoin to restore.", true)
+	end,
+})
+
+Cmd.add({"norender", "disablerender", "renderoff", "stoprender"}, {
+	fn = function()
+		RunService:Set3dRenderingEnabled(false)
+		notify("lucide:eye-off", 3, "NoRender", "3D rendering disabled.", true)
+	end,
+})
+
+Cmd.add({"render", "enablerender", "renderon", "startrender"}, {
+	fn = function()
+		RunService:Set3dRenderingEnabled(true)
+		notify("lucide:eye", 3, "Render", "3D rendering enabled.", true)
 	end,
 })
 
@@ -4119,10 +4035,10 @@ Cmd.add({"loopfullbright", "loopfb", "lfb"}, {
 		Lighting.Brightness = 2
 		Lighting.Ambient = Color3.fromRGB(128, 128, 128)
 
-		NnBind.reconnect("loopfb_GlobalShadows", Lighting:GetPropertyChangedSignal("GlobalShadows"):Connect(function() if Lighting["GlobalShadows"] ~= false then Lighting["GlobalShadows"] = false end end))
-		NnBind.reconnect("loopfb_ClockTime", Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function() if Lighting["ClockTime"] ~= 12 then Lighting["ClockTime"] = 12 end end))
-		NnBind.reconnect("loopfb_Brightness", Lighting:GetPropertyChangedSignal("Brightness"):Connect(function() if Lighting["Brightness"] ~= 2 then Lighting["Brightness"] = 2 end end))
-		NnBind.reconnect("loopfb_Ambient", Lighting:GetPropertyChangedSignal("Ambient"):Connect(function() if Lighting["Ambient"] ~= Color3.fromRGB(128, 128, 128) then Lighting["Ambient"] = Color3.fromRGB(128, 128, 128) end end))
+		Bind:Connect(Lighting:GetPropertyChangedSignal("GlobalShadows"), function() if Lighting["GlobalShadows"] ~= false then Lighting["GlobalShadows"] = false end end, "loopfb_GlobalShadows")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("ClockTime"), function() if Lighting["ClockTime"] ~= 12 then Lighting["ClockTime"] = 12 end end, "loopfb_ClockTime")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("Brightness"), function() if Lighting["Brightness"] ~= 2 then Lighting["Brightness"] = 2 end end, "loopfb_Brightness")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("Ambient"), function() if Lighting["Ambient"] ~= Color3.fromRGB(128, 128, 128) then Lighting["Ambient"] = Color3.fromRGB(128, 128, 128) end end, "loopfb_Ambient")
 
 		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright enabled.", true)
 	end,
@@ -4130,10 +4046,10 @@ Cmd.add({"loopfullbright", "loopfb", "lfb"}, {
 
 Cmd.add({"unloopfullbright", "unloopfb", "unlfb"}, {
 	fn = function()
-		NnBind.disconnect("loopfb_GlobalShadows")
-		NnBind.disconnect("loopfb_ClockTime")
-		NnBind.disconnect("loopfb_Brightness")
-		NnBind.disconnect("loopfb_Ambient")
+		Bind:Disconnect("loopfb_GlobalShadows")
+		Bind:Disconnect("loopfb_ClockTime")
+		Bind:Disconnect("loopfb_Brightness")
+		Bind:Disconnect("loopfb_Ambient")
 
 		notify("lucide:sun", 3, "LoopFullbright", "Loop fullbright disabled.", true)
 	end,
@@ -4165,14 +4081,14 @@ Cmd.add({"loopnofog", "lnofog", "lnf", "loopnf"}, {
 		Lighting.FogEnd = 9e9
 		Lighting.FogStart = 9e9
 
-		NnBind.reconnect("loopnofog_FogEnd", Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function() if Lighting["FogEnd"] ~= 9e9 then Lighting["FogEnd"] = 9e9 end end))
-		NnBind.reconnect("loopnofog_FogStart", Lighting:GetPropertyChangedSignal("FogStart"):Connect(function() if Lighting["FogStart"] ~= 9e9 then Lighting["FogStart"] = 9e9 end end))
+		Bind:Connect(Lighting:GetPropertyChangedSignal("FogEnd"), function() if Lighting["FogEnd"] ~= 9e9 then Lighting["FogEnd"] = 9e9 end end, "loopnofog_FogEnd")
+		Bind:Connect(Lighting:GetPropertyChangedSignal("FogStart"), function() if Lighting["FogStart"] ~= 9e9 then Lighting["FogStart"] = 9e9 end end, "loopnofog_FogStart")
 
 		if atm then
 			atm.Density = 0
 			atm.Offset = 0
-			NnBind.reconnect("loopnofog_AtmDensity", atm:GetPropertyChangedSignal("Density"):Connect(function() if atm["Density"] ~= 0 then atm["Density"] = 0 end end))
-			NnBind.reconnect("loopnofog_AtmOffset", atm:GetPropertyChangedSignal("Offset"):Connect(function() if atm["Offset"] ~= 0 then atm["Offset"] = 0 end end))
+			Bind:Connect(atm:GetPropertyChangedSignal("Density"), function() if atm["Density"] ~= 0 then atm["Density"] = 0 end end, "loopnofog_AtmDensity")
+			Bind:Connect(atm:GetPropertyChangedSignal("Offset"), function() if atm["Offset"] ~= 0 then atm["Offset"] = 0 end end, "loopnofog_AtmOffset")
 		end
 
 		notify("lucide:cloud-off", 3, "LoopNoFog", "Loop no fog enabled.", true)
@@ -4181,10 +4097,10 @@ Cmd.add({"loopnofog", "lnofog", "lnf", "loopnf"}, {
 
 Cmd.add({"unloopnofog", "unlnofog", "unlnf", "unloopnf", "unnf"}, {
 	fn = function()
-		NnBind.disconnect("loopnofog_FogEnd")
-		NnBind.disconnect("loopnofog_FogStart")
-		NnBind.disconnect("loopnofog_AtmDensity")
-		NnBind.disconnect("loopnofog_AtmOffset")
+		Bind:Disconnect("loopnofog_FogEnd")
+		Bind:Disconnect("loopnofog_FogStart")
+		Bind:Disconnect("loopnofog_AtmDensity")
+		Bind:Disconnect("loopnofog_AtmOffset")
 
 		if rare.nofog_fogEnd ~= nil then Lighting.FogEnd = rare.nofog_fogEnd end
 		if rare.nofog_fogStart ~= nil then Lighting.FogStart = rare.nofog_fogStart end
@@ -4219,7 +4135,7 @@ Cmd.add({"follow", "stalk", "walk"}, {
 
 		rare.followActive = true
 
-		NnBind.reconnect("follow_render", RunService.RenderStepped:Connect(function()
+		Bind:Connect(RunService.RenderStepped, function()
 			local hum = playerHum
 			local hrp = playerHRP
 			local targetChar = target.Character
@@ -4229,7 +4145,7 @@ Cmd.add({"follow", "stalk", "walk"}, {
 			if (hrp.Position - targetHRP.Position).Magnitude < 4 then return end
 
 			hum:MoveTo(targetHRP.Position)
-		end))
+		end, "follow_render")
 
 		notify("lucide:user-check", 3, "Follow", "Following " .. target.Name .. ".", true)
 	end,
@@ -4238,7 +4154,7 @@ Cmd.add({"follow", "stalk", "walk"}, {
 Cmd.add({"unfollow"}, {
 	fn = function()
 		rare.followActive = nil
-		NnBind.disconnect("follow_render")
+		Bind:Disconnect("follow_render")
 		if playerHum and playerHRP then
 			playerHum:MoveTo(playerHRP.Position)
 		end
@@ -4248,7 +4164,7 @@ Cmd.add({"unfollow"}, {
 
 Cmd.add({"adonisbypass", "bypassadonis", "badonis", "adonisb"}, {
 	fn = function() -- skidded from nameless admin lol
-		task.spawn(function()
+		ThreadPool:Spawn(function()
 			local getgc = execapi.getgc
 			local hookfunction = execapi.hookfunction
 			local newcclosure = execapi.newcclosure or function(f) return f end
@@ -4326,11 +4242,11 @@ Cmd.add({"cameranoclip", "camnoclip", "cnoclip", "nccam"}, {
 		local HasAdvancedAccess = execapi.getgc and SetConstant and GetConstants
 
 		local function useInvisCamMode()
-			NnBind.reconnect("camnoclip_invis", LocalPlayer:GetPropertyChangedSignal("DevCameraOcclusionMode"):Connect(function()
+			Bind:Connect(LocalPlayer:GetPropertyChangedSignal("DevCameraOcclusionMode"), function()
 				if LocalPlayer.DevCameraOcclusionMode ~= Enum.DevCameraOcclusionMode.Invisicam then
 					LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
 				end
-			end))
+			end, "camnoclip_invis")
 			LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
 		end
 
@@ -4430,7 +4346,7 @@ Cmd.add({"uncameranoclip", "uncamnoclip", "uncnoclip", "unnccam"}, {
 			end
 		end
 
-		NnBind.disconnect("camnoclip_invis")
+		Bind:Disconnect("camnoclip_invis")
 		pcall(function()
 			LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
 		end)
@@ -4476,13 +4392,13 @@ Cmd.add({"blackhole", "bh"}, {
 				end)
 			end
 		end)
-		NnBind.reconnect("bh_drag", UserInputService.InputChanged:Connect(function(input)
+		Bind:Connect(UserInputService.InputChanged, function(input)
 			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				local delta = input.Position - dragStart
 				local vp = gui.AbsoluteSize local fs = frame.AbsoluteSize
 				frame.Position = UDim2.new(0, math.clamp(startPos.X.Offset + delta.X, 0, vp.X - fs.X), 0, math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - fs.Y))
 			end
-		end))
+		end, "bh_drag")
 
 		local bh = NewInstance("Model", workspace) bh.Name = "BlackHole" rare.bhModel = bh
 		local bh_core = NewInstance("Part", bh) bh_core.Name = "Core" bh_core.Shape = Enum.PartType.Ball bh_core.Size = Vector3.new(6, 6, 6) bh_core.Anchored = true bh_core.CanCollide = false bh_core.Material = Enum.Material.SmoothPlastic bh_core.Color = Color3.new(0, 0, 0)
@@ -4528,35 +4444,35 @@ Cmd.add({"blackhole", "bh"}, {
 			end
 		end
 
-		NnBind.reconnect("bh_charAdded", CharacterAdded:Connect(function()
+		Bind:Connect(CharacterAdded, function()
 			CharacterCached:Wait()
 			if rare.bhControlActive and playerHRP then playerHRP.Anchored = true end
-		end))
+		end, "bh_charAdded")
 
 		LocalPlayer.ReplicationFocus = workspace
 
-		NnBind.reconnect("bh_heartbeat", RunService.Heartbeat:Connect(function()
+		Bind:Connect(RunService.Heartbeat, function()
 			setSimRadius()
-		end))
+		end, "bh_heartbeat")
 
-		NnBind.reconnect("bh_renderStepped", RunService.RenderStepped:Connect(function(dt)
+		Bind:Connect(RunService.RenderStepped, function(dt)
 			if not rare.bhControlActive then return end
-			local mv = Controls:GetMoveVector()
+			local mv = GetMoveVector()
 			local move = (Camera.CFrame.LookVector * -mv.Z) + (Camera.CFrame.RightVector * mv.X)
 			if move.Magnitude > 0 then anchor.CFrame = anchor.CFrame + move * (120 * dt) end
-		end))
+		end, "bh_renderStepped")
 
 		btn.MouseButton1Click:Connect(function()
 			rare.bhBringActive = not rare.bhBringActive
 			if rare.bhBringActive then
 				btn.Text = "Bring Parts | On"
 				for _, v in ipairs(workspace:GetDescendants()) do ForcePart(v) end
-				NnBind.reconnect("bh_descendantAdded", workspace.DescendantAdded:Connect(function(v)
+				Bind:Connect(workspace.DescendantAdded, function(v)
 					if rare.bhBringActive then ForcePart(v) end
-				end))
+				end, "bh_descendantAdded")
 			else
 				btn.Text = "Bring Parts | Off"
-				NnBind.disconnect("bh_descendantAdded")
+				Bind:Disconnect("bh_descendantAdded")
 				for _, v in ipairs(workspace:GetDescendants()) do
 					if v:IsA("BasePart") and v ~= anchor then
 						local ap = v:FindFirstChild("AlignPosition")
@@ -4597,11 +4513,11 @@ Cmd.add({"unblackhole", "unbh"}, {
 	fn = function()
 		if not rare.bhActive then return end
 
-		NnBind.disconnect("bh_drag")
-		NnBind.disconnect("bh_charAdded")
-		NnBind.disconnect("bh_heartbeat")
-		NnBind.disconnect("bh_renderStepped")
-		NnBind.disconnect("bh_descendantAdded")
+		Bind:Disconnect("bh_drag")
+		Bind:Disconnect("bh_charAdded")
+		Bind:Disconnect("bh_heartbeat")
+		Bind:Disconnect("bh_renderStepped")
+		Bind:Disconnect("bh_descendantAdded")
 
 		if rare.bhControlActive then
 			if playerHRP then playerHRP.Anchored = false end
@@ -4672,10 +4588,17 @@ end
 
 hudSg.Enabled = true
 
-Library:Notify({
-	Title = "Noname",
-	Desc = "Time taken to load: " .. string.format("%.2f", os.clock() - rare.loadStart) .. "s",
-	Duration = 4,
-	Icon = "lucide:cpu",
-	CanClose = true,
-})
+local x = "Time taken to load: " .. string.format("%.2f", os.clock() - rare.loadStart) .. "s"
+ThreadPool:Spawn(function()
+	while not rare.libraryReady do
+		task.wait(0.1)
+	end
+
+	Library:Notify({
+		Title = "Noname",
+		Desc = x,
+		Duration = 4,
+		Icon = "lucide:cpu",
+		CanClose = true,
+	})
+end)
